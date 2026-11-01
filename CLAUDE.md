@@ -5,6 +5,7 @@ The MAI (Microservices AI) is the AI layer of ReadRight, an oral reading assessm
 - [README.md](README.md): how the system works, API summary, current state.
 - [docs/deployment-architecture.md](docs/deployment-architecture.md): deployment, time budget, cost.
 - [contracts/be-mai-openapi.yaml](contracts/be-mai-openapi.yaml): BE-MAI API contract (source of truth).
+- [contracts/worker-api.md](contracts/worker-api.md): server-lane (audio/video worker) HTTP contract.
 
 ## Layout
 

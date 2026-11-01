@@ -1,6 +1,6 @@
 import logging
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
@@ -16,7 +16,8 @@ from .logging import RequestLoggingMiddleware, configure_logging
 from .models import AnalysisRequest, AnalysisResponse
 from .pipeline import pipeline_processor
 from .routes import analyses, health
-from .stub import build_stub_analysis
+
+Processor = Callable[[AnalysisRequest, Settings], Awaitable[AnalysisResponse]]
 
 
 def log_settings_sources() -> None:
@@ -27,12 +28,11 @@ def log_settings_sources() -> None:
     logger.info("api key loaded", extra={"source": api_key_source()})
 
 
-async def stub_processor(body: AnalysisRequest, settings: Settings) -> AnalysisResponse:
-    """Processor for MAI_PIPELINE_MODE=stub: no download, canned result."""
-    return build_stub_analysis(body, settings)
-
-
-def create_app(settings: Settings | None = None, redis: aioredis.Redis | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    redis: aioredis.Redis | None = None,
+    processor: Processor | None = None,
+) -> FastAPI:
     from_environment = settings is None
     settings = settings or Settings()  # type: ignore[call-arg]  # api_key comes from env
     configure_logging(settings.log_level)
@@ -58,16 +58,12 @@ def create_app(settings: Settings | None = None, redis: aioredis.Redis | None = 
             client, settings.in_progress_ttl_seconds, settings.result_ttl_seconds
         )
         app.state.idempotency = store
-        if settings.pipeline_mode == "stub":
-            app.state.processor = stub_processor
-        else:
-            app.state.processor = pipeline_processor
-            for binary in (settings.ffmpeg_path, settings.ffprobe_path):
-                if shutil.which(binary) is None:
-                    logging.getLogger("app.config").warning(
-                        "media binary not found; real mode requests will fail",
-                        extra={"binary": binary},
-                    )
+        app.state.processor = processor or pipeline_processor
+        for binary in (settings.ffmpeg_path, settings.ffprobe_path):
+            if shutil.which(binary) is None:
+                logging.getLogger("app.config").warning(
+                    "media binary not found; requests will fail", extra={"binary": binary}
+                )
         app.state.readiness_checks["redis"] = store.ping
         try:
             yield

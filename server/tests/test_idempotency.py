@@ -12,7 +12,7 @@ import fakeredis
 import fakeredis.aioredis
 import httpx
 import pytest
-from conftest import valid_body
+from conftest import fake_analysis, valid_body
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -20,7 +20,6 @@ from app.errors import MAIError
 from app.idempotency import IdempotencyStore, request_fingerprint
 from app.main import create_app
 from app.models import AnalysisRequest, ErrorCode
-from app.stub import build_stub_analysis
 
 pytestmark = pytest.mark.anyio
 
@@ -51,7 +50,7 @@ class Processor:
             await asyncio.wait_for(self.release.wait(), timeout=10)
         if self.error is not None:
             raise self.error
-        return build_stub_analysis(body, settings)
+        return fake_analysis(body, settings)
 
 
 async def post(client, auth, **overrides):
@@ -75,7 +74,6 @@ async def test_first_request_processes_once_and_stores_done(app, async_client, a
     processor = app.state.processor = Processor()
     response = await post(async_client, auth)
     assert response.status_code == 200
-    assert response.headers["X-MAI-Stub"] == "true"
     assert "X-MAI-Replayed" not in response.headers
     assert processor.calls == 1
     record = await stored(redis)
@@ -95,7 +93,6 @@ async def test_repeat_replays_identical_body_without_reprocessing(app, async_cli
     assert second.status_code == 200
     assert second.json() == first.json()
     assert second.headers["X-MAI-Replayed"] == "true"
-    assert second.headers["X-MAI-Stub"] == "true"
     assert processor.calls == 1
 
 
@@ -298,7 +295,6 @@ async def test_redis_failing_in_complete_still_returns_200(
     processor = app.state.processor = Processor(during=disconnect)
     response = await post(async_client, auth)
     assert response.status_code == 200
-    assert response.headers["X-MAI-Stub"] == "true"
     assert response.json()["request_id"] == REQUEST_ID
 
     # The result was never stored as done, so after recovery a retry reprocesses.
@@ -404,7 +400,7 @@ def _record(body: AnalysisRequest, settings: Settings, state: str, **extra) -> s
         "claimed_at": 1,
     }
     if state == "done":
-        record["response"] = build_stub_analysis(body, settings).model_dump(mode="json")
+        record["response"] = fake_analysis(body, settings).model_dump(mode="json")
     record.update(extra)
     return json.dumps(record)
 
@@ -428,7 +424,7 @@ async def test_claim_lost_race_to_done_returns_stored_response(redis, settings):
     seeded = _record(body, settings, "done")
     await redis.set(KEY, seeded, ex=100)
     result = await _store(redis).claim(body)
-    assert result == build_stub_analysis(body, settings)
+    assert result == fake_analysis(body, settings)
     assert await redis.get(KEY) == seeded
 
 

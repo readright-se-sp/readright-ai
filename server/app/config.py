@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
-from typing import Literal, Self
+from typing import Self
 
+import httpx
 from dotenv import dotenv_values
 from pydantic import PositiveFloat, PositiveInt, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,11 +23,13 @@ class Settings(BaseSettings):
     in_progress_ttl_seconds: int = 130
     result_ttl_seconds: PositiveInt = 604800
     redis_timeout_seconds: PositiveFloat = 2.0
-    pipeline_mode: Literal["stub", "real"] = "real"
     scratch_dir: Path | None = None
     max_video_bytes: PositiveInt = 209_715_200  # 200 MiB
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
+    audio_worker_url: str = "http://localhost:8001"
+    video_worker_url: str = "http://localhost:8002"
+    worker_connect_timeout_seconds: PositiveFloat = 5.0
 
     @field_validator("api_key")
     @classmethod
@@ -39,6 +42,17 @@ class Settings(BaseSettings):
                 "MAI_API_KEY is still the placeholder from .env.example; set a real key"
             )
         return SecretStr(key)
+
+    @field_validator("audio_worker_url", "video_worker_url")
+    @classmethod
+    def _check_worker_url(cls, value: str) -> str:
+        try:
+            url = httpx.URL(value)
+        except httpx.InvalidURL as exc:
+            raise ValueError("must be an absolute http or https URL") from exc
+        if url.scheme not in ("http", "https") or not url.host:
+            raise ValueError("must be an absolute http or https URL")
+        return value
 
     @model_validator(mode="after")
     def _check_lease_outlives_deadline(self) -> Self:

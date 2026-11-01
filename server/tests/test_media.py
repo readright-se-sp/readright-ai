@@ -28,7 +28,6 @@ def media_settings() -> Settings:
     return Settings(  # type: ignore[call-arg]
         _env_file=None,
         api_key=API_KEY,
-        pipeline_mode="stub",
         ffmpeg_path="my-ffmpeg",
         ffprobe_path="my-ffprobe",
     )
@@ -325,7 +324,7 @@ def media_files(tmp_path_factory) -> dict[str, Path]:
 
 @pytest.fixture
 def real_settings() -> Settings:
-    return Settings(_env_file=None, api_key=API_KEY, pipeline_mode="stub")  # type: ignore[call-arg]
+    return Settings(_env_file=None, api_key=API_KEY)  # type: ignore[call-arg]
 
 
 async def test_c19_convert_real_webm_to_16k_mono_pcm(media_files, real_settings, tmp_path):

@@ -16,7 +16,7 @@ RID = "3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11"
 @pytest.fixture
 def scratch_settings(tmp_path: Path) -> Settings:
     return Settings(  # type: ignore[call-arg]
-        _env_file=None, api_key=API_KEY, pipeline_mode="stub", scratch_dir=tmp_path / "root"
+        _env_file=None, api_key=API_KEY, scratch_dir=tmp_path / "root"
     )
 
 

@@ -3,13 +3,12 @@
 import asyncio
 
 import pytest
-from conftest import API_KEY, valid_body
+from conftest import API_KEY, fake_analysis, valid_body
 
 from app.config import Settings
 from app.deadline import Deadline, deadline_var
 from app.errors import MAIError
 from app.models import ErrorCode
-from app.stub import build_stub_analysis
 
 pytestmark = pytest.mark.anyio
 
@@ -18,11 +17,10 @@ KEY = "mai:req:3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11"
 
 @pytest.fixture
 def settings() -> Settings:
-    """Overrides the conftest fixture: a short deadline, stub pipeline mode."""
+    """Overrides the conftest fixture: a short deadline."""
     return Settings(  # type: ignore[call-arg]
         _env_file=None,
         api_key=API_KEY,
-        pipeline_mode="stub",
         request_deadline_seconds=0.3,
         in_progress_ttl_seconds=130,
     )
@@ -48,7 +46,7 @@ class Slow:
         except asyncio.CancelledError:
             self.cancelled += 1
             raise
-        return build_stub_analysis(body, settings)
+        return fake_analysis(body, settings)
 
 
 async def post(client, auth):
@@ -134,11 +132,10 @@ async def test_c5_mai_error_timeout_from_processor_is_504(app, async_client, aut
     assert response.json()["error"]["code"] == "TIMEOUT"
 
 
-# 6. both pipeline modes -------------------------------------------------------------------------
+# 6. default test setup -------------------------------------------------------------------------
 
 
 async def test_c6_deadline_applies_with_default_test_setup(app, async_client, auth):
-    assert app.state.settings.pipeline_mode == "stub"
     app.state.processor = Slow()
     response = await post(async_client, auth)
     assert response.status_code == 504
