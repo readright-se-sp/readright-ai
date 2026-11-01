@@ -1,13 +1,20 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
+import redis.asyncio as aioredis
 from fastapi import FastAPI
 
 from . import __version__
 from .auth import ApiKeyMiddleware
 from .config import Settings, api_key_source, env_file_overrides
 from .errors import register_error_handlers
+from .idempotency import IdempotencyStore
 from .logging import RequestLoggingMiddleware, configure_logging
+from .models import AnalysisRequest, AnalysisResponse
 from .routes import analyses, health
+from .stub import build_stub_analysis
 
 
 def log_settings_sources() -> None:
@@ -18,14 +25,46 @@ def log_settings_sources() -> None:
     logger.info("api key loaded", extra={"source": api_key_source()})
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+async def stub_processor(body: AnalysisRequest, settings: Settings) -> AnalysisResponse:
+    """Default `app.state.processor`. Phase 4 swaps in the real pipeline."""
+    return build_stub_analysis(body, settings)
+
+
+def create_app(settings: Settings | None = None, redis: aioredis.Redis | None = None) -> FastAPI:
     from_environment = settings is None
     settings = settings or Settings()  # type: ignore[call-arg]  # api_key comes from env
     configure_logging(settings.log_level)
     if from_environment:
         log_settings_sources()
 
-    app = FastAPI(title="ReadRight MAI", version=__version__)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        client = redis
+        if client is None:
+            url = settings.redis_url.get_secret_value()
+            client = aioredis.from_url(
+                url,
+                decode_responses=True,
+                socket_timeout=settings.redis_timeout_seconds,
+                socket_connect_timeout=settings.redis_timeout_seconds,
+            )
+            # Host only: the URL may hold a password. No PING here; /health/ready reports it.
+            logging.getLogger("app.config").info(
+                "redis client created", extra={"redis_host": urlparse(url).hostname}
+            )
+        store = IdempotencyStore(
+            client, settings.in_progress_ttl_seconds, settings.result_ttl_seconds
+        )
+        app.state.idempotency = store
+        app.state.processor = stub_processor
+        app.state.readiness_checks["redis"] = store.ping
+        try:
+            yield
+        finally:
+            if redis is None:  # close only a client we created
+                await client.aclose()
+
+    app = FastAPI(title="ReadRight MAI", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.readiness_checks = {}
 

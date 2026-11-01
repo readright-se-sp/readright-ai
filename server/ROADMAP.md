@@ -7,7 +7,7 @@ The server is built in 7 phases. Each phase below says what to build, the decisi
 | # | Phase | Status |
 |---|---|---|
 | 1 | Setup, contract layer, stub endpoint | Done |
-| 2 | Idempotency (Redis) | Not started |
+| 2 | Idempotency (Redis) | Done |
 | 3 | Deadline, download, preprocessing | Not started |
 | 4 | Worker contract and orchestration | Not started |
 | 5 | Mini audio files (cut and upload) | Not started |
@@ -45,17 +45,17 @@ What exists: `app/` package with `create_app()` factory and settings on `app.sta
 
 Decisions: package is `app/` (no `src/`); 401 uses code `INVALID_REQUEST` (contract has no auth code; flagged to the user as a possible contract addition); real env vars override `.env` and the server logs a warning when that happens.
 
-## Phase 2 — Idempotency (Redis)
+## Phase 2 — Idempotency (Redis) (done)
 
 **Goal.** A `request_id` is processed at most once at a time, and a finished result is returned again without reprocessing or re-uploading.
 
 **Build.**
 - Async Redis client (`redis.asyncio`) created in the app lifespan, stored on `app.state`, closed on shutdown; injectable so tests use `fakeredis`.
-- One record per `request_id` (e.g. key `mai:req:<request_id>`) holding the state (`in_progress`, `done`, `failed`), timestamps, and the stored response body when done.
+- One record per `request_id` (e.g. key `mai:req:<request_id>`) holding the state (`in_progress`, `done`), timestamps, and the stored response body when done.
 - The claim must be atomic (`SET NX` or a small Lua script) so two simultaneous identical requests cannot both start.
-- `done` → return the stored body as 200. `in_progress` → 409 `REQUEST_IN_PROGRESS`. `failed` or absent → claim and process.
+- `done` → return the stored body as 200. `in_progress` → 409 `REQUEST_IN_PROGRESS`. Absent → claim and process.
 - The `in_progress` record has a lease TTL longer than the 120 s SLA (e.g. 130 s), so a crashed request cannot block retries forever.
-- On success store the result with a long TTL; on any error mark `failed` (or delete) so the BE can retry with the same `request_id` (the contract says 500 and 504 are safe to retry).
+- On success store the result with a long TTL; on any error delete the record so the BE can retry with the same `request_id` (the contract says 500 and 504 are safe to retry).
 - Redis unreachable during a request → 503 `SERVICE_UNAVAILABLE` with `Retry-After`. Add a `redis` readiness check (`PING`).
 - Lookup happens before admission control (Phase 6) and claim after it, so a finished result is always returned even under load. Structure the code so Phase 6 can slot in between.
 - Wrap the existing stub call; the stub result is what gets stored for now.
@@ -71,12 +71,22 @@ Decisions: package is `app/` (no `src/`); 401 uses code `INVALID_REQUEST` (contr
 
 **Done when.** All of the above is tested, the README documents running Redis locally, and `.env.example` has the new settings.
 
+Decisions:
+- No `failed` state: any error (including cancellation) deletes the record, so errors are never cached and the BE can retry with the same `request_id`. Failures are visible in the logs.
+- Claim, complete and release carry a random token; complete and release are Lua scripts that act only if the token still matches, so a request whose lease expired cannot overwrite or delete a newer claim.
+- Same `request_id` with a different body → 400 `INVALID_REQUEST`. The fingerprint covers `passage_title`, `passage_content`, `output_key_prefix` (trailing slash ignored) and `video_url` without its query string, because the presigned signature changes on every re-sign. Flagged to the BE team as a contract clarification.
+- Replays carry `X-MAI-Replayed: true` (header only, not in the contract).
+- Redis error in lookup or claim → 503 `SERVICE_UNAVAILABLE`; in complete → still 200 (error logged, the lease expires); in release → logged, the original error is returned.
+- Added `MAI_REDIS_TIMEOUT_SECONDS` (default 2) so a hung Redis cannot eat the deadline.
+- No in-memory fallback: local development runs a real Redis; tests use fakeredis.
+- The processor is `app.state.processor` (the stub for now); Phase 3/4 replace it. Phase 6 admission control slots in between `lookup` and `claim` in `routes/analyses.py`.
+
 ## Phase 3 — Deadline, download, preprocessing
 
 **Goal.** Every request runs against a 115 s deadline, and the server turns the presigned `video_url` into a local webm and a WAV ready for the lanes.
 
 **Build.**
-- A per-request deadline (`MAI_REQUEST_DEADLINE_SECONDS`, already in settings) started when the request arrives and available to every later step (e.g. a small `Deadline` object with `remaining()`), enforced with `asyncio.timeout` around the processing. On expiry: cancel in-flight work, mark the idempotency record failed, return 504 `TIMEOUT`.
+- A per-request deadline (`MAI_REQUEST_DEADLINE_SECONDS`, already in settings) started when the request arrives and available to every later step (e.g. a small `Deadline` object with `remaining()`), enforced with `asyncio.timeout` around the processing. On expiry: cancel in-flight work, release (delete) the idempotency record, return 504 `TIMEOUT`.
 - Scratch directory per request under `MAI_SCRATCH_DIR`, always removed in `finally`.
 - Download with a streaming `httpx.AsyncClient` to `<scratch>/<request_id>/input.webm`, with a byte limit and connect/read timeouts bounded by the deadline. Never log the URL's query string (signature); log the host only.
 - Map failures: S3 403 for an expired signature → 422 `VIDEO_URL_EXPIRED`; other 4xx/5xx, network errors or size limit exceeded → 422 `VIDEO_DOWNLOAD_FAILED`.

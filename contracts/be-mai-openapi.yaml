@@ -1,0 +1,325 @@
+openapi: 3.0.3
+info:
+  title: ReadRight SE - Microservices AI (MAI) API
+  version: 1.1.1
+  description: |
+    Contract between the Backend (BE) and the Microservices AI (MAI).
+
+    The BE submits one analysis request per recording: a presigned URL of the
+    webm, the passage title and the passage content. The MAI downloads the
+    webm, splits it into audio and video, analyzes each separately, cuts the
+    audio into mini audio files per miscued word/phrase and uploads them to S3,
+    then consolidates the audio and video results.
+
+    The API is SYNCHRONOUS. The BE (Lambda) waits for the response on the same
+    HTTP request. Hard SLA: MAI must respond within 120 seconds. If it cannot
+    finish within that budget it must abort and return 504 (TIMEOUT) rather
+    than keep the connection open. The BE client timeout should be slightly
+    above 120s (suggested 125s) and the Lambda timeout above that (suggested 150s).
+
+    The BE only stores `audio_object_key` values; it never reads the files.
+servers:
+  - url: https://readright-mai.reevsan.dev/v1
+    description: MAI base URL
+security:
+  - ApiKeyAuth: []
+tags:
+  - name: Analyses
+paths:
+  /analyses:
+    post:
+      tags: [Analyses]
+      operationId: createAnalysis
+      summary: Analyze a reading recording (synchronous)
+      description: |
+        Runs the full analysis and returns the consolidated result.
+
+        **Idempotency:** `request_id` is an idempotency key. If a request with
+        the same `request_id` was already completed, MAI returns the stored
+        result (200) without reprocessing the video or re-uploading audio. If
+        one with the same `request_id` is still in progress, MAI returns 409.
+        This lets the BE safely retry after a timeout or dropped connection.
+
+        **Time limit:** MAI must answer within 120 seconds. On overrun it
+        returns 504 with code `TIMEOUT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+            example:
+              request_id: 3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11
+              video_url: https://bucket.s3.ap-southeast-1.amazonaws.com/recordings/abc.webm?X-Amz-Signature=...
+              passage_title: "Pam's Cat"
+              passage_content: "Pam has a cat. It is on the bed. It can nap. It can sit. “Oh no!” says Pam. “The cat fell off the bed!” Is the cat sad? No. It is on the mat."
+      responses:
+        '200':
+          description: Analysis completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+              example:
+                request_id: 3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11
+                reading_score: 82.5
+                wpm: 74.3
+                is_word_by_word: false
+                is_disregard_punctuation: true
+                is_monotonous: false
+                is_lack_expression: false
+                is_hardly_audible: false
+                is_finger_pointing: false
+                miscues:
+                  - actual_phrase: fell
+                    spoken_phrase: fall
+                    actual_phoneme: [f, ɛ, l]
+                    spoken_phoneme: [f, ɔ, l]
+                    read_start: 14200
+                    read_end: 14750
+                    audio_object_key: analyses/3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11/miscues/miscue-0001.wav
+                    miscue_type: substitution
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMedia'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/Timeout'
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    AnalysisRequest:
+      type: object
+      required: [request_id, video_url, passage_title, passage_content]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          description: BE-generated idempotency key / correlation id (e.g. the BE's assessment id).
+        video_url:
+          type: string
+          format: uri
+          description: Presigned S3 GET URL of the recorded webm (audio + video). Must stay valid for at least the full 120s window.
+        passage_title:
+          type: string
+          minLength: 1
+        passage_content:
+          type: string
+          minLength: 1
+          description: Full text of the passage the reader was supposed to read.
+        output_key_prefix:
+          type: string
+          description: |
+            Optional S3 key prefix under which MAI uploads the mini audio files
+            (e.g. `analyses/<request_id>/`). If omitted, MAI uses its default.
+    AnalysisResponse:
+      type: object
+      required:
+        - request_id
+        - reading_score
+        - wpm
+        - is_word_by_word
+        - is_disregard_punctuation
+        - is_monotonous
+        - is_lack_expression
+        - is_hardly_audible
+        - is_finger_pointing
+        - miscues
+      properties:
+        request_id:
+          type: string
+          format: uuid
+          description: Echo of the request's `request_id`.
+        reading_score:
+          type: number
+          format: float
+          description: Overall reading score (scale to be agreed, e.g. 0-100).
+        wpm:
+          type: number
+          format: float
+          description: Words per minute.
+        is_word_by_word:
+          type: boolean
+        is_disregard_punctuation:
+          type: boolean
+        is_monotonous:
+          type: boolean
+        is_lack_expression:
+          type: boolean
+        is_hardly_audible:
+          type: boolean
+        is_finger_pointing:
+          type: boolean
+        miscues:
+          type: array
+          description: Empty array if the reader made no miscues.
+          items:
+            $ref: '#/components/schemas/Miscue'
+    Miscue:
+      type: object
+      required:
+        - actual_phrase
+        - spoken_phrase
+        - actual_phoneme
+        - spoken_phoneme
+        - read_start
+        - read_end
+        - audio_object_key
+        - miscue_type
+      properties:
+        actual_phrase:
+          type: string
+          description: Word/phrase as written in the passage.
+        spoken_phrase:
+          type: string
+          description: Word/phrase as actually spoken. Empty string for an omission.
+        actual_phoneme:
+          type: array
+          items:
+            type: string
+          description: Phonemes of the actual phrase (e.g. IPA symbols).
+        spoken_phoneme:
+          type: array
+          items:
+            type: string
+          description: Phonemes of the spoken phrase. Empty for an omission.
+        read_start:
+          type: integer
+          description: Start of the miscue in the recording, in milliseconds.
+        read_end:
+          type: integer
+          description: End of the miscue in the recording, in milliseconds.
+        audio_object_key:
+          type: string
+          description: S3 object key of the mini audio file for this miscue (WAV, 16 kHz, 16-bit PCM, mono).
+        miscue_type:
+          $ref: '#/components/schemas/MiscueType'
+    MiscueType:
+      type: string
+      description: Type of reading miscue.
+      enum:
+        - mispronunciation
+        - omission
+        - substitution
+        - insertion
+        - repetition
+        - transposition
+        - reversal
+        - self-correction
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_REQUEST
+            - VIDEO_DOWNLOAD_FAILED
+            - VIDEO_URL_EXPIRED
+            - UNSUPPORTED_MEDIA
+            - NO_SPEECH_DETECTED
+            - REQUEST_IN_PROGRESS
+            - RATE_LIMITED
+            - TIMEOUT
+            - PROCESSING_FAILED
+            - UPLOAD_FAILED
+            - SERVICE_UNAVAILABLE
+            - INTERNAL_ERROR
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+  responses:
+    BadRequest:
+      description: Malformed request (`INVALID_REQUEST`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: |
+        A request with the same `request_id` is still being processed
+        (`REQUEST_IN_PROGRESS`). The BE should wait and retry; it will get the
+        stored result once the first request completes.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnsupportedMedia:
+      description: The downloaded file is not a valid webm or has no audio track (`UNSUPPORTED_MEDIA`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: |
+        Valid JSON but the recording cannot be analyzed: `VIDEO_URL_EXPIRED`,
+        `VIDEO_DOWNLOAD_FAILED` or `NO_SPEECH_DETECTED`. Not worth retrying
+        unchanged (except with a fresh presigned URL).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit or capacity exceeded (`RATE_LIMITED`).
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected MAI error (`PROCESSING_FAILED`, `UPLOAD_FAILED` or `INTERNAL_ERROR`). Safe to retry with the same `request_id`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unavailable:
+      description: MAI is temporarily unavailable (`SERVICE_UNAVAILABLE`).
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Timeout:
+      description: |
+        MAI could not finish within its 120-second budget (`TIMEOUT`). Any
+        partial work is discarded. The BE may retry with the same `request_id`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

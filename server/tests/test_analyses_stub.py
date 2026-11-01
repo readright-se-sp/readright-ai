@@ -38,11 +38,12 @@ def test_default_prefix_used(client, auth):
 
 
 def test_custom_prefix_with_and_without_trailing_slash(client, auth):
-    for prefix in ("custom/path/", "custom/path"):
-        keys = [
-            m["audio_object_key"]
-            for m in analyze(client, auth, output_key_prefix=prefix).json()["miscues"]
-        ]
+    for request_id, prefix in (
+        ("11111111-1111-4111-8111-111111111111", "custom/path/"),
+        ("22222222-2222-4222-8222-222222222222", "custom/path"),
+    ):
+        response = analyze(client, auth, request_id=request_id, output_key_prefix=prefix)
+        keys = [m["audio_object_key"] for m in response.json()["miscues"]]
         assert keys == ["custom/path/miscue-0001.wav", "custom/path/miscue-0002.wav"]
 
 
