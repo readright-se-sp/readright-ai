@@ -8,7 +8,7 @@ The server is built in 7 phases. Each phase below says what to build, the decisi
 |---|---|---|
 | 1 | Setup, contract layer, stub endpoint | Done |
 | 2 | Idempotency (Redis) | Done |
-| 3 | Deadline, download, preprocessing | Not started |
+| 3 | Deadline, download, preprocessing | Done |
 | 4 | Worker contract and orchestration | Not started |
 | 5 | Mini audio files (cut and upload) | Not started |
 | 6 | Admission control and readiness | Not started |
@@ -81,7 +81,7 @@ Decisions:
 - No in-memory fallback: local development runs a real Redis; tests use fakeredis.
 - The processor is `app.state.processor` (the stub for now); Phase 3/4 replace it. Phase 6 admission control slots in between `lookup` and `claim` in `routes/analyses.py`.
 
-## Phase 3 — Deadline, download, preprocessing
+## Phase 3 — Deadline, download, preprocessing (done)
 
 **Goal.** Every request runs against a 115 s deadline, and the server turns the presigned `video_url` into a local webm and a WAV ready for the lanes.
 
@@ -102,6 +102,12 @@ Decisions:
 - A webm with audio but **no video** stream: 415, or continue audio-only? The contract only mentions a missing audio track. Recommendation: 415, since the video lane needs video.
 - Once downloads are real, the stub can no longer be called with a fake URL. Keep a way to run the stub end to end for BE integration testing? Recommendation: a `MAI_PIPELINE_MODE=stub|real` setting (default `real`), removed after Phase 4 if no longer needed.
 - How to detect an expired presigned URL reliably: S3 returns 403 with an XML body containing `Request has expired`; confirm with a real expired URL.
+
+**Decisions.**
+- A webm with audio but no video stream is rejected with 415 `UNSUPPORTED_MEDIA` (the video lane needs video).
+- `MAI_PIPELINE_MODE=stub|real` (default `real`) keeps the stub runnable end to end; `stub` does no download.
+- An expired presigned URL is an HTTP 403 whose body (first 4 KB) contains `Request has expired`. Not yet confirmed against a real expired S3 URL.
+- ffmpeg is not required to run the tests: media fixtures are generated at test time (skipped if ffmpeg is missing) instead of being committed, and probe/convert unit tests monkeypatch `app.media.run_process`.
 
 **Done when.** A real presigned URL (or a local test server) produces `input.webm` and `audio.wav` within the deadline; errors map as above; ffmpeg installation is documented for Windows (`winget install Gyan.FFmpeg`), macOS (`brew install ffmpeg`) and Linux.
 

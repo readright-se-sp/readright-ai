@@ -1,4 +1,5 @@
 import logging
+import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
@@ -13,6 +14,7 @@ from .errors import register_error_handlers
 from .idempotency import IdempotencyStore
 from .logging import RequestLoggingMiddleware, configure_logging
 from .models import AnalysisRequest, AnalysisResponse
+from .pipeline import pipeline_processor
 from .routes import analyses, health
 from .stub import build_stub_analysis
 
@@ -26,7 +28,7 @@ def log_settings_sources() -> None:
 
 
 async def stub_processor(body: AnalysisRequest, settings: Settings) -> AnalysisResponse:
-    """Default `app.state.processor`. Phase 4 swaps in the real pipeline."""
+    """Processor for MAI_PIPELINE_MODE=stub: no download, canned result."""
     return build_stub_analysis(body, settings)
 
 
@@ -56,7 +58,16 @@ def create_app(settings: Settings | None = None, redis: aioredis.Redis | None = 
             client, settings.in_progress_ttl_seconds, settings.result_ttl_seconds
         )
         app.state.idempotency = store
-        app.state.processor = stub_processor
+        if settings.pipeline_mode == "stub":
+            app.state.processor = stub_processor
+        else:
+            app.state.processor = pipeline_processor
+            for binary in (settings.ffmpeg_path, settings.ffprobe_path):
+                if shutil.which(binary) is None:
+                    logging.getLogger("app.config").warning(
+                        "media binary not found; real mode requests will fail",
+                        extra={"binary": binary},
+                    )
         app.state.readiness_checks["redis"] = store.ping
         try:
             yield

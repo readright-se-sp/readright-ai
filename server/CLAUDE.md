@@ -28,6 +28,11 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 - `logging.py`: JSON logs, `request_id_var`, request logging middleware.
 - `idempotency.py`: `IdempotencyStore` (Redis claim / replay / release, `request_fingerprint`).
 - `stub.py`: dummy analysis (`build_stub_analysis`).
+- `deadline.py`: `Deadline`, `deadline_var` (set by the route, read by the pipeline).
+- `scratch.py`: `scratch_dir()` context manager (per-request dir, always removed).
+- `download.py`: `download_video()` (streamed, size-limited, maps failures to `MAIError`; never logs the query string).
+- `media.py`: `run_process()` (kills the child on cancel), `probe()`, `convert_to_wav()`.
+- `pipeline.py`: `pipeline_processor` (real mode: download, probe, convert, then the stub result).
 - `routes/analyses.py`: `POST /v1/analyses`.
 - `routes/health.py`: `/health/live`, `/health/ready`.
 

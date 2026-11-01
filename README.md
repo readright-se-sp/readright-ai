@@ -114,7 +114,7 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose 
 
 | Project | Status |
 |---|---|
-| `server/` | Runs locally with Redis. `POST /v1/analyses` returns stub data, with `request_id` idempotency (Phase 2 of 7, see [server/ROADMAP.md](server/ROADMAP.md)). |
+| `server/` | Runs locally with Redis. `POST /v1/analyses` returns stub data, with `request_id` idempotency, a 115 s deadline, and (real mode) video download plus ffmpeg preprocessing (Phase 3 of 7, see [server/ROADMAP.md](server/ROADMAP.md)). |
 | `audio/`, `video/` | Not started. |
 | Docker Compose | Not yet (Phase 7). |
 

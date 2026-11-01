@@ -2,7 +2,7 @@
 
 The HTTP entry point of the MAI. It implements the BE ⇄ MAI contract in [`../contracts/be-mai-openapi.yaml`](../contracts/be-mai-openapi.yaml) (v1.1.1). See the [root README](../README.md) for how the whole system works.
 
-> **Current state (Phase 2):** `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis and returns **stub data**, marked with the response header `X-MAI-Stub: true`. A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. It does not download the video, call the analysis lanes or touch S3 yet. **Redis is required** (see [Running Redis locally](#running-redis-locally)); ffmpeg and AWS credentials are not.
+> **Current state (Phase 3):** in `real` pipeline mode the server also downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)); the response is still stub data. `MAI_PIPELINE_MODE=stub` skips this. Earlier state (Phase 2): `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis and returns **stub data**, marked with the response header `X-MAI-Stub: true`. A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. It does not download the video, call the analysis lanes or touch S3 yet. **Redis is required** (see [Running Redis locally](#running-redis-locally)); ffmpeg and AWS credentials are not.
 
 ## Prerequisites
 
@@ -73,6 +73,11 @@ Settings come from environment variables with the `MAI_` prefix, or from `.env`.
 | `MAI_IN_PROGRESS_TTL_SECONDS` | `130` | Lease on an in-progress `request_id`. Must be greater than `MAI_REQUEST_DEADLINE_SECONDS`. |
 | `MAI_RESULT_TTL_SECONDS` | `604800` (7 days) | How long a finished result stays replayable. Must be > 0. |
 | `MAI_REDIS_TIMEOUT_SECONDS` | `2` | Connect/read timeout per Redis call. Must be > 0. |
+| `MAI_PIPELINE_MODE` | `real` | `real` downloads and preprocesses the video; `stub` skips it and returns the canned result. |
+| `MAI_SCRATCH_DIR` | system temp dir + `readright-mai` | Root of the per-request scratch directories. |
+| `MAI_MAX_VIDEO_BYTES` | `209715200` (200 MiB) | Largest video the server downloads. Must be > 0. |
+| `MAI_FFMPEG_PATH` | `ffmpeg` | ffmpeg executable (name on `PATH` or full path). |
+| `MAI_FFPROBE_PATH` | `ffprobe` | ffprobe executable (name on `PATH` or full path). |
 
 ## Run
 
@@ -147,6 +152,16 @@ Without uv, activate the venv and drop `uv run`. Tests don't need a `.env` and i
 
 `tests/test_contract.py` checks the models and responses against `../contracts/be-mai-openapi.yaml`. If you change the contract, those tests tell you what the server must change to match.
 
+## Installing ffmpeg
+
+`MAI_PIPELINE_MODE=real` (the default) needs `ffmpeg` and `ffprobe` on `PATH`. The server logs a warning at startup if they are missing.
+
+- Windows: `winget install Gyan.FFmpeg` (then open a new terminal)
+- macOS: `brew install ffmpeg`
+- Linux: `apt install ffmpeg`
+
+Without ffmpeg, or for BE integration without real presigned URLs, set `MAI_PIPELINE_MODE=stub`. Tests that need real ffmpeg are skipped when it is missing.
+
 ## Project layout
 
 ```
@@ -160,6 +175,11 @@ server/
 │   ├── logging.py       # JSON logs with request_id
 │   ├── idempotency.py   # IdempotencyStore: Redis claim / replay / release per request_id
 │   ├── stub.py          # dummy analysis (replaced in Phase 4)
+│   ├── deadline.py      # Deadline + deadline_var (per-request time budget)
+│   ├── scratch.py       # per-request scratch directory
+│   ├── download.py      # presigned-URL video download
+│   ├── media.py         # run_process, ffprobe, ffmpeg conversion
+│   ├── pipeline.py      # real-mode processor: download, probe, convert
 │   └── routes/          # analyses.py, health.py
 ├── tests/
 ├── .env.example
