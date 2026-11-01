@@ -2,7 +2,7 @@
 
 The HTTP entry point of the MAI. It implements the BE ⇄ MAI contract in [`../contracts/be-mai-openapi.yaml`](../contracts/be-mai-openapi.yaml) (v1.1.1). See the [root README](../README.md) for how the whole system works.
 
-> **Current state (Phase 4):** `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) and merges their results. A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. It does not cut or upload the mini audio files yet (`audio_object_key` values are assigned but nothing is uploaded; S3 is Phase 5). **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)); AWS credentials are not.
+> **Current state (Phase 5):** `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) merges their results, then cuts one mini audio file per miscue and uploads it to S3 (see [Mini audio files](#mini-audio-files-s3)). A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)). An S3 bucket and AWS credentials are needed for requests with miscues.
 
 ## Prerequisites
 
@@ -68,7 +68,7 @@ Settings come from environment variables with the `MAI_` prefix, or from `.env`.
 | `MAI_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `MAI_REQUEST_DEADLINE_SECONDS` | `115` | Internal deadline per request (contract limit is 120 s). Used from Phase 3. |
 | `MAI_ALLOW_AUDIO_ONLY_ON_VIDEO_FAILURE` | `false` | If the video lane fails: `false` fails the request, `true` returns an audio-only result. A video timeout still fails the request: deadline expiry is always 504. |
-| `MAI_DEFAULT_OUTPUT_KEY_PREFIX` | `analyses/{request_id}/miscues/` | S3 prefix for mini audio files when the request has no `output_key_prefix`. |
+| `MAI_DEFAULT_OUTPUT_KEY_PREFIX` | `analyses/{request_id}/miscues/` | S3 prefix for mini audio files. Always used: the request's `output_key_prefix` is deprecated and ignored. |
 | `MAI_REDIS_URL` | `redis://localhost:6379/0` | Redis for idempotency records. May hold a password; never logged. |
 | `MAI_IN_PROGRESS_TTL_SECONDS` | `130` | Lease on an in-progress `request_id`. Must be greater than `MAI_REQUEST_DEADLINE_SECONDS`. |
 | `MAI_RESULT_TTL_SECONDS` | `604800` (7 days) | How long a finished result stays replayable. Must be > 0. |
@@ -80,6 +80,17 @@ Settings come from environment variables with the `MAI_` prefix, or from `.env`.
 | `MAI_AUDIO_WORKER_URL` | `http://localhost:8001` | Base URL of the audio lane. |
 | `MAI_VIDEO_WORKER_URL` | `http://localhost:8002` | Base URL of the video lane. |
 | `MAI_WORKER_CONNECT_TIMEOUT_SECONDS` | `5` | Connect timeout per lane call (capped by the remaining deadline). Must be > 0. |
+| `MAI_S3_BUCKET` | unset | Bucket for the mini audio files. Unset: startup logs a warning and any request with miscues fails `500 UPLOAD_FAILED`; zero-miscue requests still succeed. |
+| `MAI_S3_ENDPOINT_URL` | unset | Custom S3 endpoint (MinIO or a moto server) for local runs. |
+| `AWS_REGION` | `ap-southeast-1` | Region of the bucket. No `MAI_` prefix. Credentials come from the standard AWS chain (env vars, profile or instance role), never from `.env`. |
+| `MAI_UPLOAD_CONCURRENCY` | `8` | Maximum parallel clip uploads. Must be > 0. |
+| `MAI_CLIP_PADDING_MS` | `150` | Audio added before and after each miscue span (clamped to the recording). Must be >= 0. |
+
+### Mini audio files (S3)
+
+After merging, the server cuts each miscue's span (plus padding) from the WAV with Python's `wave` module and uploads it to `MAI_S3_BUCKET` at its `audio_object_key`, inside the request deadline and before the result is stored. Any upload failure returns `500 UPLOAD_FAILED`. Keys are deterministic, so a retry overwrites the same objects.
+
+Required IAM permissions: `s3:PutObject` on `arn:aws:s3:::<bucket>/analyses/*` (or your `MAI_DEFAULT_OUTPUT_KEY_PREFIX` root) (and `s3:ListBucket` for the Phase 6 readiness check). Old clips can be expired with an S3 lifecycle rule on the bucket (outside the server). For local runs, set `MAI_S3_ENDPOINT_URL` to MinIO or a moto server, or leave the bucket unset (only zero-miscue requests succeed).
 
 ## Run
 
@@ -138,7 +149,7 @@ What to expect:
 | Redis not running | `503 SERVICE_UNAVAILABLE` with `Retry-After`; `/health/ready` is 503 too |
 | No key or wrong key | `401` |
 | Missing field, bad UUID, empty passage, malformed JSON | `400 INVALID_REQUEST` |
-| Add `"output_key_prefix": "custom/path"` | Mini audio keys become `custom/path/miscue-0001.wav`, … |
+| Add `"output_key_prefix": "custom/path"` | Accepted but deprecated and ignored (logged at INFO); keys stay under `analyses/<request_id>/miscues/`. |
 
 Every error body has the contract's shape: `{"error": {"code": ..., "message": ..., "details": ...}}`.
 

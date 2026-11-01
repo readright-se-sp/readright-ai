@@ -7,7 +7,6 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from app.merge import merge_results
 from conftest import API_KEY, SIGNATURE, valid_body
 from lane_helpers import audio_result, video_result
 from pydantic import ValidationError
@@ -18,6 +17,7 @@ from app.deadline import Deadline, deadline_var
 from app.errors import MAIError
 from app.main import create_app
 from app.media import ProbeResult
+from app.merge import merge_results
 from app.models import AnalysisRequest, ErrorCode
 from app.pipeline import pipeline_processor
 
@@ -225,8 +225,8 @@ async def test_stage_each_stage_logs_stage_finished(tmp_path, monkeypatch, caplo
     finished = [r for r in caplog.records if r.getMessage() == "stage finished"]
     assert all(r.levelno == logging.INFO for r in finished)
     by_stage = {r.stage: r for r in finished}  # type: ignore[attr-defined]
-    assert set(by_stage) == {"download", "probe", "convert", "lanes"}
-    assert len(finished) == 4
+    assert set(by_stage) == {"download", "probe", "convert", "lanes", "upload"}
+    assert len(finished) == 5
     for record in finished:
         assert isinstance(record.duration_ms, int)  # type: ignore[attr-defined]
         assert record.duration_ms >= 0  # type: ignore[attr-defined]
@@ -365,3 +365,11 @@ async def test_http_slow_download_past_deadline_is_504(
     assert code(response) == "TIMEOUT"
     s3.mock(side_effect=None)
     await assert_clean_and_retryable(async_client, auth, redis, tmp_path, s3)
+
+
+@pytest.fixture(autouse=True)
+def _stub_upload_clips(monkeypatch):
+    async def no_upload(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.pipeline.upload_clips", no_upload)

@@ -64,6 +64,10 @@ def create_app(
                 logging.getLogger("app.config").warning(
                     "media binary not found; requests will fail", extra={"binary": binary}
                 )
+        if not settings.s3_bucket:
+            logging.getLogger("app.config").warning(
+                "MAI_S3_BUCKET is not set; requests with miscues will fail with UPLOAD_FAILED"
+            )
         app.state.readiness_checks["redis"] = store.ping
         try:
             yield

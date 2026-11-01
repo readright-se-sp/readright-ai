@@ -239,3 +239,11 @@ async def test_miscues_are_sorted_in_the_http_response(async_client, auth, route
         "miscue-0001.wav",
         "miscue-0002.wav",
     ]
+
+
+@pytest.fixture(autouse=True)
+def _stub_upload_clips(monkeypatch):
+    async def no_upload(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.pipeline.upload_clips", no_upload)

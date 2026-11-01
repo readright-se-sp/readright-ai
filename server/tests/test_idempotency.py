@@ -546,22 +546,23 @@ def test_positive_settings_reject_zero_from_env(monkeypatch, name, value):
         Settings(_env_file=None)  # type: ignore[call-arg]
 
 
-# 14. round 2: output_key_prefix trailing slash --------------------------------------------------
+# 14. output_key_prefix is ignored, so it is not part of the fingerprint ---------------
 
 
-async def test_trailing_slash_on_output_key_prefix_is_a_replay(app, async_client, auth):
+async def test_changed_output_key_prefix_is_a_replay(app, async_client, auth):
     processor = app.state.processor = Processor()
     first = await post(async_client, auth, output_key_prefix="custom/path")
     assert first.status_code == 200
-    second = await post(async_client, auth, output_key_prefix="custom/path/")
+    second = await post(async_client, auth, output_key_prefix="other/path/")
     assert second.status_code == 200
     assert second.headers["X-MAI-Replayed"] == "true"
     assert processor.calls == 1
 
 
-async def test_different_output_key_prefix_is_400(app, async_client, auth):
-    app.state.processor = Processor()
-    assert (await post(async_client, auth, output_key_prefix="custom/path")).status_code == 200
+async def test_output_key_prefix_added_on_retry_is_a_replay(app, async_client, auth):
+    processor = app.state.processor = Processor()
+    assert (await post(async_client, auth)).status_code == 200
     response = await post(async_client, auth, output_key_prefix="other/path/")
-    assert response.status_code == 400
-    assert error_code(response) == "INVALID_REQUEST"
+    assert response.status_code == 200
+    assert response.headers["X-MAI-Replayed"] == "true"
+    assert processor.calls == 1

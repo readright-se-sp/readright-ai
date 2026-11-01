@@ -334,15 +334,16 @@ async def test_server_with_fake_workers_returns_passage_derived_miscues(
     assert not (tmp_path / "scratch" / REQUEST_ID).exists()
 
 
-async def test_server_with_fake_workers_uses_custom_key_prefix(async_client, auth, wired):
+async def test_server_with_fake_workers_ignores_request_key_prefix(async_client, auth, wired):
     """criterion 19"""
     body = valid_body(output_key_prefix="custom/path")
     response = await async_client.post("/v1/analyses", json=body, headers=auth)
 
     assert response.status_code == 200, response.text
     keys = [m["audio_object_key"] for m in response.json()["miscues"]]
-    assert keys[0] == "custom/path/miscue-0001.wav"
-    assert all(key.startswith("custom/path/miscue-") for key in keys)
+    prefix = f"analyses/{REQUEST_ID}/miscues/"
+    assert keys[0] == f"{prefix}miscue-0001.wav"
+    assert all(key.startswith(f"{prefix}miscue-") for key in keys)
 
 
 async def test_server_maps_fake_worker_no_speech_to_422(async_client, auth, wired, monkeypatch):
@@ -351,3 +352,11 @@ async def test_server_maps_fake_worker_no_speech_to_422(async_client, auth, wire
     response = await async_client.post("/v1/analyses", json=valid_body(), headers=auth)
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "NO_SPEECH_DETECTED"
+
+
+@pytest.fixture(autouse=True)
+def _stub_upload_clips(monkeypatch):
+    async def no_upload(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.pipeline.upload_clips", no_upload)

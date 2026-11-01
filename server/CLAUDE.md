@@ -33,7 +33,9 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 - `media.py`: `run_process()` (kills the child on cancel), `probe()`, `convert_to_wav()`.
 - `workers.py`: lane clients `run_audio_lane` / `run_video_lane`, lane result models, lane error mapping.
 - `merge.py`: `output_key_prefix()`, `merge_results()` (lane results to `AnalysisResponse`).
-- `pipeline.py`: `pipeline_processor` (download, probe, convert, both lanes in parallel, merge).
+- `clips.py`: `wav_duration_ms()`, `cut_clip()` (padded WAV slice with the `wave` module).
+- `upload.py`: `upload_clips()` (boto3 in threads, bounded concurrency, errors to `UPLOAD_FAILED`).
+- `pipeline.py`: `pipeline_processor` (download, probe, convert, both lanes in parallel, merge, upload clips).
 - `devtools/fake_workers.py` (outside `app/`): fake audio/video lane apps for local runs.
 - `routes/analyses.py`: `POST /v1/analyses`.
 - `routes/health.py`: `/health/live`, `/health/ready`.

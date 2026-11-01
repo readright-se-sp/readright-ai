@@ -287,3 +287,11 @@ async def test_job_id_comparison_ignores_case(workers, lane):
         workers.post(VIDEO_URL).respond(200, json=video_payload(job_id=upper))
         result = await call_video()
     assert str(result.job_id).lower() == REQUEST_ID
+
+
+@pytest.fixture(autouse=True)
+def _stub_upload_clips(monkeypatch):
+    async def no_upload(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.pipeline.upload_clips", no_upload)

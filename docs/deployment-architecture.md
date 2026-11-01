@@ -54,7 +54,7 @@ flowchart LR
   API -->|upload mini audio files| S3
 ```
 
-The API server checks Redis for the `request_id`, pulls the webm from S3 and converts it to a WAV (16 kHz, 16-bit PCM). It sends the WAV to the audio worker and the webm to the video worker in parallel, then cuts a mini audio file for each miscue the audio worker returns and uploads them to S3. The workers never touch S3.
+The API server checks Redis for the `request_id`, pulls the webm from S3 and converts it to a WAV (16 kHz, 16-bit PCM). It sends the WAV to the audio worker and the webm to the video worker in parallel, then cuts a mini audio file for each miscue the audio worker returns (with Python's `wave` module, not ffmpeg) and uploads them to S3. The workers never touch S3.
 
 ## Request flow
 
@@ -66,7 +66,7 @@ Each request gets a 115 s internal deadline, leaving 5 s of the 120 s SLA for th
 4. Admission control checks whether the request can finish before its deadline. If not, it returns `429` with `Retry-After`.
 5. The server downloads the webm from the presigned S3 URL to scratch disk and converts its audio track with ffmpeg into one WAV file (16 kHz, 16-bit PCM).
 6. The audio worker gets the WAV and the passage; the video worker gets the webm. They run in parallel, each given the request's deadline. A worker skips work for a request whose deadline has passed.
-7. The audio worker transcribes, aligns with the passage and returns the miscued words with their start and end times. The server cuts each of those spans out of the WAV with ffmpeg and uploads them to S3 as the mini audio files.
+7. The audio worker transcribes, aligns with the passage and returns the miscued words with their start and end times. The server cuts each of those spans out of the WAV with Python's `wave` module (no ffmpeg) and uploads them to S3 as the mini audio files.
 8. The server merges both results into the contract's response body, stores it in Redis against the `request_id`, deletes the scratch files and returns 200.
 9. If the deadline passes first, the server cancels the workers' jobs, deletes the in-progress record (so the BE can retry with the same `request_id`) and returns `504 TIMEOUT`.
 

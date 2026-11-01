@@ -4,7 +4,16 @@ from typing import Self
 
 import httpx
 from dotenv import dotenv_values
-from pydantic import PositiveFloat, PositiveInt, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 API_KEY_PLACEHOLDER = "change-me"  # value in .env.example
@@ -30,6 +39,11 @@ class Settings(BaseSettings):
     audio_worker_url: str = "http://localhost:8001"
     video_worker_url: str = "http://localhost:8002"
     worker_connect_timeout_seconds: PositiveFloat = 5.0
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    aws_region: str = Field("ap-southeast-1", validation_alias=AliasChoices("AWS_REGION"))
+    upload_concurrency: PositiveInt = 8
+    clip_padding_ms: NonNegativeInt = 150
 
     @field_validator("api_key")
     @classmethod
@@ -42,6 +56,11 @@ class Settings(BaseSettings):
                 "MAI_API_KEY is still the placeholder from .env.example; set a real key"
             )
         return SecretStr(key)
+
+    @field_validator("s3_bucket", "s3_endpoint_url")
+    @classmethod
+    def _blank_is_unset(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
 
     @field_validator("audio_worker_url", "video_worker_url")
     @classmethod
