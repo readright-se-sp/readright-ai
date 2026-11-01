@@ -26,6 +26,7 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 - `errors.py`: `MAIError`, `STATUS_BY_CODE`, error handlers.
 - `auth.py`: `ApiKeyMiddleware`.
 - `logging.py`: JSON logs, `request_id_var`, request logging middleware.
+- `idempotency.py`: `IdempotencyStore` (Redis claim / replay / release, `request_fingerprint`).
 - `stub.py`: dummy analysis (`build_stub_analysis`).
 - `routes/analyses.py`: `POST /v1/analyses`.
 - `routes/health.py`: `/health/live`, `/health/ready`.
@@ -36,12 +37,14 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 - Errors: raise `MAIError(ErrorCode.X, message, details=..., retry_after=...)`. The status comes from `STATUS_BY_CODE`. Never return ad-hoc error JSON or raise a bare `HTTPException` for contract errors.
 - Validation errors become 400 `INVALID_REQUEST` and never echo input (it may contain the presigned URL signature).
 - Auth: `ApiKeyMiddleware` checks `X-API-Key` for `/v1/` paths before the body is parsed. Keep it in middleware.
+- The app is built by `create_app(settings=None, redis=None)`; tests inject a fakeredis client. A lifespan sets `app.state.idempotency` (the `IdempotencyStore`) and `app.state.processor` (`async (body, settings) -> AnalysisResponse`, the stub for now; Phase 4 replaces it, tests swap in fakes). It creates the Redis client only if none was injected and closes only its own.
+- Idempotency: the route does lookup, claim, processor, then complete (release on any failure, including cancellation). Errors are never cached. Same `request_id` with a different body is 400. Phase 6 admission control goes between lookup and claim.
 - Readiness: register dependency checks as named async `() -> bool` callables in `app.state.readiness_checks`. Any failure (or exception) returns 503 `SERVICE_UNAVAILABLE` with `Retry-After`.
 - Settings use the `MAI_` prefix (pydantic-settings). Env vars override `.env` on purpose: production injects env vars.
 - Every new setting must also be added to `.env.example` and the configuration table in [README.md](README.md).
 - Logging: JSON via `app/logging.py`. Pass fields with `extra={...}`. `request_id` comes from the contextvar. Never log secrets or full URLs (host only).
 - Use relative imports inside `app/`.
-- `POST /v1/analyses` currently returns stub data from `stub.py` with header `X-MAI-Stub: true`. Phase 4 replaces the stub call and removes the header.
+- `POST /v1/analyses` currently returns stub data from `stub.py` with header `X-MAI-Stub: true` (also on replays, which add `X-MAI-Replayed: true`). Phase 4 replaces the stub call and removes the header.
 
 ## Testing
 

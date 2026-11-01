@@ -1,7 +1,10 @@
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
+import fakeredis
+import fakeredis.aioredis
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -45,8 +48,25 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def app(settings: Settings):
-    return create_app(settings)
+def anyio_backend() -> str:
+    """Run `@pytest.mark.anyio` tests on asyncio only."""
+    return "asyncio"
+
+
+@pytest.fixture
+def redis_server() -> fakeredis.FakeServer:
+    return fakeredis.FakeServer()
+
+
+@pytest.fixture
+def redis(redis_server: fakeredis.FakeServer) -> fakeredis.aioredis.FakeRedis:
+    """A fresh in-memory Redis per test. The same client is injected into the app."""
+    return fakeredis.aioredis.FakeRedis(server=redis_server, decode_responses=True)
+
+
+@pytest.fixture
+def app(settings: Settings, redis):
+    return create_app(settings, redis=redis)
 
 
 @pytest.fixture
@@ -54,6 +74,15 @@ def client(app) -> Iterator[TestClient]:
     # raise_server_exceptions=False so unhandled errors surface as real 500 responses.
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
+
+
+@pytest.fixture
+async def async_client(app) -> AsyncIterator[httpx.AsyncClient]:
+    """Async client for concurrency tests. Runs the app lifespan like TestClient does."""
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+            yield http
 
 
 @pytest.fixture

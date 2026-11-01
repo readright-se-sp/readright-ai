@@ -1,0 +1,13 @@
+# Local configuration (copy from .env.example)
+.env
+
+# Python
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# OS / editors
+.DS_Store
+Thumbs.db

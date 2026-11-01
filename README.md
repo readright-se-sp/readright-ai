@@ -1,126 +1,150 @@
-# readright-api
+# readright-ai
 
-The AI layer of **ReadRight**, an oral reading assessment platform based on the Phil-IRI. It takes a recording of a student reading a passage aloud and returns an analysis of the reading: what was said, how it lines up with the passage, and what the video shows.
+The AI layer of **ReadRight** (the MAI, Microservices AI), an oral reading assessment platform based on the Phil-IRI. It takes a recording of a student reading a passage aloud and returns an analysis of the reading: a score, words per minute, reading-behavior flags, and a list of miscues with a short audio clip of each one.
 
-This layer only processes media. It knows nothing about students, classes or assessments; those belong to the backend-for-frontend (BFF).
+This layer only processes media. It knows nothing about students, classes or assessments; those belong to the backend (BE).
 
 ```
-Frontend  ⇄  BFF  ⇄  readright-api (this repo)
+Frontend  ⇄  BE (AWS Lambda)  ⇄  readright-ai (this repo)
 ```
 
 ## How it works
 
 ```
-BFF ──(S3 file id, passage text)──► server
-                                      ├─ fetches the recording from S3
-                                      ├─ preprocesses audio, video and passage
-                                      ├──► audio service ──┐
-                                      └──► video service ──┤   (run in parallel)
-                                      ◄── merges results ◄─┘
-BFF ◄── analysis response
+BE ──(request_id, presigned video_url, passage)──► server
+                                                     ├─ downloads the webm from the presigned URL
+                                                     ├─ preprocesses it into one WAV (16 kHz, 16-bit PCM, mono)
+                                                     ├──► audio lane (WAV + passage) ──┐
+                                                     └──► video lane (webm) ───────────┤   (run in parallel)
+                                                     ◄── results ◄─────────────────────┘
+                                                     ├─ cuts a mini audio file for each miscue from the WAV
+                                                     ├─ uploads the mini audio files to S3
+                                                     └─ merges everything into one response
+BE ◄── analysis response (200, or a typed error)
 ```
+
+1. The BE sends `POST /v1/analyses` with a presigned S3 GET URL of the recorded webm and the passage.
+2. The server downloads the webm and converts its audio track into a single WAV file: 16 kHz sample rate, 16-bit PCM.
+3. The WAV and the passage go to the **audio lane**; the webm goes to the **video lane**. Both run at the same time.
+4. The audio lane returns the words and phrases that have miscues, each with the start and end time of where it was spoken.
+5. For each miscue, the server cuts that span out of the WAV and uploads it to S3. These are the **mini audio files**. Their S3 keys are returned to the BE as `audio_object_key`.
+6. The server merges the audio and video results into the response and returns it.
 
 | Project | Role |
 |---|---|
-| `server/` | The only HTTP entry point. Fetches media from S3, preprocesses it, sends it to the analysis services and merges their results. |
-| `audio/` | Transcribes the reading verbatim and aligns it with the passage to tag miscues. |
-| `video/` | Analyzes the reader on video. |
+| `server/` | The only HTTP entry point. Checks the API key and idempotency, downloads and preprocesses the recording, sends work to both lanes, cuts and uploads the mini audio files, and merges the results. |
+| `audio/` | Audio lane. Transcribes the WAV verbatim with CrisperWhisper, aligns it with the passage, and returns the miscues with their timestamps. |
+| `video/` | Video lane. Analyzes the reader on video (for example, finger pointing). Models are not chosen yet. |
 
-The audio and video services never fetch from S3, never call each other and never talk to the BFF. They receive ready-to-use data from the server and return results.
-
-## Repository structure
-
-```
-readright-api/
-├── server/          # HTTP entry: S3 fetch, preprocessing, fan-out, merge
-├── audio/           # audio analysis microservice
-├── video/           # video analysis microservice
-├── contracts/       # request/response samples and tag definitions
-├── scripts/         # benchmarks and local dev helpers
-├── compose.yaml     # runs all services together with a shared volume
-├── .env.example
-└── README.md
-```
-
-Each of `server/`, `audio/` and `video/` is an independent Python project with its own `pyproject.toml`, `Dockerfile` and `tests/`. They share no code. Where they need to agree on a data shape, the agreement is documented in `contracts/` and each project keeps its own models.
-
-## Getting started
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Python 3.11+ (for running a service outside Docker)
-- `ffmpeg` (for preprocessing in the server)
-- AWS credentials with read access to the recordings bucket
-
-### Configuration
-
-```bash
-cp .env.example .env
-# fill in the S3 bucket, region and credentials
-```
-
-Only the server needs S3 settings. The audio and video services take no cloud configuration.
-
-### Run everything
-
-```bash
-docker compose up --build
-```
-
-### Run one service on its own
-
-```bash
-cd audio            # or server/, video/
-pip install -e ".[dev]"
-pytest
-```
-
-Because the audio and video services don't depend on S3, you can develop and test them using local files in their `tests/fixtures/` folders.
+The audio and video lanes never touch S3, never call each other and never talk to the BE. They receive ready-to-use files from the server over a shared volume and return results. Only the server talks to S3.
 
 ## The API contract
 
-The BFF sends the server two things:
+The BE ⇄ MAI contract is [`contracts/be-mai-openapi.yaml`](contracts/be-mai-openapi.yaml). It is the source of truth; this section is a summary.
 
-- `s3_file_id`: the recording to analyze
-- `passage`: the text the student was asked to read
+**Request:** `POST /v1/analyses` with an `X-API-Key` header.
 
-The server responds with the audio and video results combined. Full request and response samples are in `contracts/server-api.md`.
-
-### Audio tags
-
-The audio service returns one row per aligned word:
-
-```
-(passage_word, spoken_word, start, end, tag, move_id)
-```
-
-`passage_word` is empty for words that were only spoken, and `spoken_word`, `start` and `end` are empty for words that were skipped. Times are in seconds from the start of the recording.
-
-| Tag | Meaning |
+| Field | Description |
 |---|---|
-| `match` | Read correctly |
-| `substitution` | A different word was read |
-| `omission` | A passage word was skipped |
-| `insertion` | An extra word was read |
-| `swap` | Two adjacent words were read in reverse order |
-| `repetition` | A word or phrase was repeated |
-| `moved` | A phrase was read in a different place; both halves share a `move_id` |
+| `request_id` | UUID from the BE. Idempotency key and correlation id. |
+| `video_url` | Presigned S3 GET URL of the webm (audio and video). Must stay valid for the full 120 s. |
+| `passage_title` | Title of the passage. |
+| `passage_content` | Full text the student was asked to read. |
+| `output_key_prefix` | Optional S3 key prefix for the mini audio files. Defaults to `analyses/<request_id>/miscues/`. |
 
-Tags derived after alignment (such as self-correction, reversal and mispronunciation) are documented in `contracts/audio-service.md`.
+**Response (200):** `reading_score`, `wpm`, the flags `is_word_by_word`, `is_disregard_punctuation`, `is_monotonous`, `is_lack_expression`, `is_hardly_audible` and `is_finger_pointing`, and a `miscues` array. Each miscue has:
+
+| Field | Description |
+|---|---|
+| `actual_phrase` / `spoken_phrase` | What the passage says and what was read. `spoken_phrase` is empty for an omission. |
+| `actual_phoneme` / `spoken_phoneme` | Phonemes of each (e.g. IPA). `spoken_phoneme` is empty for an omission. |
+| `read_start` / `read_end` | Where the miscue is in the recording, in **milliseconds**. |
+| `audio_object_key` | S3 key of the mini audio file for this miscue. |
+| `miscue_type` | One of `mispronunciation`, `omission`, `substitution`, `insertion`, `repetition`, `transposition`, `reversal`, `self-correction`. |
+
+**Behavior the BE relies on:**
+
+- **Synchronous, 120 s hard limit.** The server works to an internal 115 s deadline and returns `504 TIMEOUT` rather than holding the connection open.
+- **Idempotent.** Repeating a finished `request_id` returns the stored result without reprocessing or re-uploading. Repeating one still in progress returns `409 REQUEST_IN_PROGRESS`.
+- **Typed errors.** Every error body is `{"error": {"code", "message", "details"}}`:
+
+| Status | Codes |
+|---|---|
+| 400 | `INVALID_REQUEST` |
+| 401 | missing or invalid API key |
+| 409 | `REQUEST_IN_PROGRESS` |
+| 415 | `UNSUPPORTED_MEDIA` |
+| 422 | `VIDEO_URL_EXPIRED`, `VIDEO_DOWNLOAD_FAILED`, `NO_SPEECH_DETECTED` |
+| 429 | `RATE_LIMITED` (with `Retry-After`) |
+| 500 | `PROCESSING_FAILED`, `UPLOAD_FAILED`, `INTERNAL_ERROR` |
+| 503 | `SERVICE_UNAVAILABLE` (with `Retry-After`) |
+| 504 | `TIMEOUT` |
+
+The interface between the server and the two lanes is internal and will be documented in `contracts/worker-api.md`.
 
 ### Rules for changing a contract
 
 1. Update the matching file in `contracts/` first.
-2. Bump the `version` field in the affected response.
+2. Bump the version (`info.version` in the OpenAPI file, or the version noted in an internal contract).
 3. Update the models in every project that sends or receives that shape.
+
+## Repository structure
+
+```
+readright-ai/
+├── server/          # HTTP entry: download, preprocess, fan-out, mini audio upload, merge
+├── audio/           # audio lane (CrisperWhisper)
+├── video/           # video lane (models to be chosen)
+├── contracts/       # be-mai-openapi.yaml, and internal lane contracts
+├── docs/            # deployment-architecture.md
+└── README.md
+```
+
+Each project keeps its own `.env.example` (see `server/.env.example`). `compose.yaml` and a `Caddyfile` will be added at the root when the services are packaged.
+
+Each of `server/`, `audio/` and `video/` is an independent Python project with its own `pyproject.toml`, `Dockerfile` and `tests/`. They share no code. Where they need to agree on a data shape, the agreement is documented in `contracts/` and each project keeps its own models.
+
+## Deployment
+
+MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose containers: `caddy` (TLS), `api` (the server), `audio-worker`, `video-worker` and `redis` (idempotency state). The instance is started for sessions and stopped in between. See [`docs/deployment-architecture.md`](docs/deployment-architecture.md) for the full design, time budget and cost estimate.
+
+## Getting started
+
+### Current state
+
+| Project | Status |
+|---|---|
+| `server/` | Runs locally with Redis. `POST /v1/analyses` returns stub data, with `request_id` idempotency (Phase 2 of 7, see [server/ROADMAP.md](server/ROADMAP.md)). |
+| `audio/`, `video/` | Not started. |
+| Docker Compose | Not yet (Phase 7). |
+
+### Run the server locally
+
+Needs Python 3.11+, [uv](https://docs.astral.sh/uv/) (or pip) and a local Redis (`docker run -d -p 6379:6379 redis:7`; on Windows, Docker Desktop or Memurai).
+
+```bash
+cd server
+uv sync --extra dev
+cp .env.example .env          # then set MAI_API_KEY
+uv run uvicorn app.main:create_app --factory --reload --port 8000
+```
+
+Open http://localhost:8000/docs to try the API. Full setup, configuration, test and troubleshooting steps are in [`server/README.md`](server/README.md).
+
+### What later phases will add
+
+- `ffmpeg` on the machine running the server (Phase 3).
+- AWS credentials with **write** access to the mini audio bucket (Phase 5). Downloading the recording needs no credentials, because the BE sends a presigned URL. Only the server needs AWS settings; the audio and video lanes take no cloud configuration.
+- `docker compose up --build` to run everything together (Phase 7).
+
+Each project has its own `pyproject.toml` and tests. Because the lanes don't depend on S3, they can be developed and tested with local files in their `tests/fixtures/` folders. The server's tests use fake lanes and a fake presigned URL.
 
 ## Known limitations
 
-- **Mispronunciations can be hidden.** The speech model may write a mispronounced word as the correct word, so the audio service cannot flag it.
+- **Mispronunciations can be hidden.** The speech model may write a mispronounced word as the correct word, so the audio lane cannot flag it.
 - **Teacher prompts are transcribed as reading.** If a teacher says a word aloud for the student, it appears in the transcript as if the student read it.
 - **Moved phrases must match exactly.** A phrase read elsewhere with a changed word is reported as separate omissions and insertions.
 
 ## Model licensing
 
-The CrisperWhisper model weights are released under a non-commercial research license. The inference code is MIT-licensed, but the weights are not. Check the license before any commercial use of this project.
+The CrisperWhisper model weights are released under a non-commercial research license. The inference code is MIT-licensed, but the weights are not. The license of the 2.0 weights is not yet confirmed. Check the license before any commercial use of this project.
