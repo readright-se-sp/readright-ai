@@ -111,7 +111,7 @@ Decisions:
 
 **Done when.** A real presigned URL (or a local test server) produces `input.webm` and `audio.wav` within the deadline; errors map as above; ffmpeg installation is documented for Windows (`winget install Gyan.FFmpeg`), macOS (`brew install ffmpeg`) and Linux.
 
-## Phase 4 — Worker contract and orchestration
+## Phase 4 — Worker contract and orchestration (done)
 
 **Goal.** Define how the server talks to the audio and video lanes, call both in parallel, and build the real response. The stub is removed.
 
@@ -148,7 +148,7 @@ Decisions:
 
 **Done when.** `contracts/worker-api.md` exists and is approved; the server runs end to end against the fake workers; the stub is gone; README and docs describe the worker URLs.
 
-## Phase 5 — Mini audio files (cut and upload)
+## Phase 5 — Mini audio files (cut and upload) (done)
 
 **Goal.** For every miscue, cut its span out of the WAV and upload it to S3 under the key returned in `audio_object_key`.
 
@@ -158,18 +158,18 @@ Decisions:
 - Upload happens inside the deadline and before the result is stored, so a replayed result always points to files that exist. Keys are deterministic, so a retry overwrites the same objects.
 - Any upload failure → 500 `UPLOAD_FAILED`.
 
-**Settings (proposed).** `MAI_S3_BUCKET`, `AWS_REGION` (default `ap-southeast-1`), `MAI_UPLOAD_CONCURRENCY` (e.g. 8), `MAI_CLIP_PADDING_MS`.
+**Settings.** `MAI_S3_BUCKET`, `MAI_S3_ENDPOINT_URL`, `AWS_REGION` (default `ap-southeast-1`), `MAI_UPLOAD_CONCURRENCY` (e.g. 8), `MAI_CLIP_PADDING_MS`.
 
 **Tests.** moto for S3: every miscue gets an object at its key with a valid WAV of the right length and format; padding is clamped to the recording's bounds; an upload error → 500 `UPLOAD_FAILED`; uploads respect the concurrency limit; no upload when there are no miscues.
 
-**Open questions.**
+**Open questions (resolved, see Decisions below).**
 - Padding around each clip so the word isn't cut off? Recommendation: ~150 ms each side, clamped, configurable.
 - **Omissions** have no spoken audio, but the contract requires `audio_object_key`. Recommendation: the audio lane gives the time where the word should have been read, and the clip covers that gap; confirm with the user.
 - Should old clips be cleaned up (S3 lifecycle rule)? Probably a bucket setting outside the server.
 
 **Decisions (Phase 5).** `boto3` run via `asyncio.to_thread` with a semaphore (`MAI_UPLOAD_CONCURRENCY`), one client per request; padding `MAI_CLIP_PADDING_MS` default 150, clamped; omissions use the lane's time span plus padding; `start_ms` past the recording end is `500 PROCESSING_FAILED`; `MAI_S3_BUCKET` unset warns at startup and fails requests with miscues (`UPLOAD_FAILED`); `MAI_S3_ENDPOINT_URL` for MinIO/moto; HeadBucket readiness deferred to Phase 6. D8: `output_key_prefix` in the request is deprecated and ignored; keys always come from `MAI_DEFAULT_OUTPUT_KEY_PREFIX`, so a caller cannot write under another request's prefix (the field is still accepted, logged at INFO, and no longer part of the idempotency fingerprint).
 
-**Done when.** Clips are cut and uploaded in tests (moto) and once against the real bucket; IAM permissions needed (`s3:PutObject` on the prefix, `s3:ListBucket`/`HeadBucket` for readiness) are documented.
+**Done when.** Clips are cut and uploaded in tests (moto) and once against the real bucket; IAM permissions needed (`s3:PutObject` on the prefix, `s3:ListBucket`/`HeadBucket` for readiness) are documented. Status: implemented and tested with moto; IAM permissions are in [README.md](README.md). The one run against the real bucket is a manual check done outside the test suite.
 
 ## Phase 6 — Admission control and readiness
 

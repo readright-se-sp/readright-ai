@@ -59,5 +59,5 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 
 - Tests must not depend on a developer's `.env` or shell `MAI_*` vars. `conftest.py` isolates them; keep using the `settings`, `client` and `auth` fixtures and `valid_body()`.
 - `tests/test_contract.py` must keep passing. It checks models, enums and version against the contract.
-- Use fakes and mocks, not real Redis, S3, workers or network. Later phases plan fakeredis, respx and moto.
+- Use fakes and mocks, not real Redis, S3, workers or network. Tests use fakeredis (Redis), respx (lanes) and moto (S3).
 - Never put real keys in tests.
