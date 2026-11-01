@@ -11,3 +11,6 @@ __pycache__/
 # OS / editors
 .DS_Store
 Thumbs.db
+
+# temporary files
+misc/

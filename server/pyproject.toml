@@ -15,16 +15,17 @@ dependencies = [
     "pydantic-settings",
     "python-dotenv",
     "redis>=5.0.1",
+    "httpx",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "httpx",
     "pyyaml",
     "jsonschema",
     "ruff",
     "fakeredis[lua]>=2.40.0",
+    "respx",
 ]
 
 [tool.hatch.version]

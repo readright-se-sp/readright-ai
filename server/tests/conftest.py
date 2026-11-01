@@ -44,7 +44,7 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def settings() -> Settings:
     # _env_file=None: ignore a local server/.env.
-    return Settings(_env_file=None, api_key=API_KEY)  # type: ignore[call-arg]
+    return Settings(_env_file=None, api_key=API_KEY, pipeline_mode="stub")  # type: ignore[call-arg]
 
 
 @pytest.fixture

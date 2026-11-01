@@ -1,11 +1,15 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, Request, Response, Security
 
 from ..auth import api_key_scheme
+from ..config import Settings
+from ..deadline import Deadline, deadline_var
+from ..errors import MAIError
 from ..idempotency import IdempotencyStore
 from ..logging import request_id_var
-from ..models import AnalysisRequest, AnalysisResponse, ErrorResponse
+from ..models import AnalysisRequest, AnalysisResponse, ErrorCode, ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,9 @@ def _replay(stored: AnalysisResponse, response: Response) -> AnalysisResponse:
 async def create_analysis(
     body: AnalysisRequest, request: Request, response: Response
 ) -> AnalysisResponse:
+    settings: Settings = request.app.state.settings
+    deadline = Deadline(settings.request_deadline_seconds)
+    deadline_var.set(deadline)
     request_id_var.set(str(body.request_id))
     logger.info(
         "analysis received",
@@ -51,10 +58,14 @@ async def create_analysis(
     if isinstance(claimed, AnalysisResponse):  # another request finished while we were claiming
         return _replay(claimed, response)
 
+    timeout = asyncio.timeout(deadline.remaining())
     try:
-        result = await request.app.state.processor(body, request.app.state.settings)
-    except BaseException:  # includes cancellation; errors are never cached
+        async with timeout:
+            result = await request.app.state.processor(body, settings)
+    except BaseException as exc:  # includes cancellation; errors are never cached
         await store.release(body, claimed)
+        if isinstance(exc, TimeoutError) and timeout.expired():
+            raise MAIError(ErrorCode.TIMEOUT, "The request deadline was exceeded.") from exc
         raise
     await store.complete(body, claimed, result)
     return result

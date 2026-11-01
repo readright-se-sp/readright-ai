@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from dotenv import dotenv_values
 from pydantic import PositiveFloat, PositiveInt, SecretStr, field_validator, model_validator
@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     in_progress_ttl_seconds: int = 130
     result_ttl_seconds: PositiveInt = 604800
     redis_timeout_seconds: PositiveFloat = 2.0
+    pipeline_mode: Literal["stub", "real"] = "real"
+    scratch_dir: Path | None = None
+    max_video_bytes: PositiveInt = 209_715_200  # 200 MiB
+    ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
 
     @field_validator("api_key")
     @classmethod
