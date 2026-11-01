@@ -80,7 +80,7 @@ The BE ⇄ MAI contract is [`contracts/be-mai-openapi.yaml`](contracts/be-mai-op
 | 503 | `SERVICE_UNAVAILABLE` (with `Retry-After`) |
 | 504 | `TIMEOUT` |
 
-The interface between the server and the two lanes is internal and will be documented in `contracts/worker-api.md`.
+The interface between the server and the two lanes is internal and documented in [`contracts/worker-api.md`](contracts/worker-api.md).
 
 ### Rules for changing a contract
 
@@ -114,7 +114,7 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose 
 
 | Project | Status |
 |---|---|
-| `server/` | Runs locally with Redis. `POST /v1/analyses` returns stub data, with `request_id` idempotency, a 115 s deadline, and (real mode) video download plus ffmpeg preprocessing (Phase 3 of 7, see [server/ROADMAP.md](server/ROADMAP.md)). |
+| `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 4 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls and result merging. Fake workers stand in for the lanes; mini audio files are not uploaded yet. |
 | `audio/`, `video/` | Not started. |
 | Docker Compose | Not yet (Phase 7). |
 

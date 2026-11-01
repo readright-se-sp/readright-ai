@@ -9,7 +9,7 @@ The server is built in 7 phases. Each phase below says what to build, the decisi
 | 1 | Setup, contract layer, stub endpoint | Done |
 | 2 | Idempotency (Redis) | Done |
 | 3 | Deadline, download, preprocessing | Done |
-| 4 | Worker contract and orchestration | Not started |
+| 4 | Worker contract and orchestration | Done |
 | 5 | Mini audio files (cut and upload) | Not started |
 | 6 | Admission control and readiness | Not started |
 | 7 | Packaging and local stack | Not started |
@@ -138,6 +138,13 @@ Decisions:
 - Which flags come from which lane, and who computes `reading_score` and `wpm`? Recommendation: all audio flags, `reading_score` and `wpm` from the audio lane; `is_finger_pointing` from the video lane. Confirm with the user and the audio lane owner.
 - Lane time unit (seconds as float, or ms as int)? Recommendation: ms ints, same as the contract.
 - Ordering of miscues in the response: by `start_ms`.
+
+**Decisions.**
+- D2: lane times are integer ms (`start_ms`, `end_ms`). The video lane owns exactly `is_finger_pointing` and `is_lack_expression`; everything else (`reading_score`, `wpm`, `is_word_by_word`, `is_disregard_punctuation`, `is_monotonous`, `is_hardly_audible`, miscues) comes from the audio lane. Miscues are sorted by `(start_ms, end_ms)`.
+- D3: cancel = close the HTTP connection (cancel the task). No cancel endpoint in v1; it is listed as future in the contract.
+- D4: fail fast. The first lane failure cancels the other lane and decides the error, except a video failure with `MAI_ALLOW_AUDIO_ONLY_ON_VIDEO_FAILURE=true`, where the server waits for audio. Deadline expiry is always 504, even with the flag on.
+- D5: each lane call opens its own `httpx.AsyncClient`. `create_app` takes `processor=None` so tests inject a fake processor.
+- D6: `MAI_PIPELINE_MODE` is removed entirely; there is no stub mode.
 
 **Done when.** `contracts/worker-api.md` exists and is approved; the server runs end to end against the fake workers; the stub is gone; README and docs describe the worker URLs.
 

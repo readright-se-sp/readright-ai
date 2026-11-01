@@ -133,7 +133,7 @@ The audio path is settled except for the model size and backend; the video path 
 - **Starting point.** `large` in fp16 for accuracy, with `turbo` or `medium` as the faster fallback. Choose by benchmark on real student recordings.
 - **Backend.** The `transformers` backend gives the most accurate word timestamps. The CTranslate2 (`faster-whisper`) backend is faster and lighter, but its model card says timestamp accuracy is not guaranteed. Since mini audio clips are cut from those timestamps, compare both before choosing.
 - **Output.** Verbatim transcript with fillers and word-level timestamps, used to find the miscues. The worker returns each miscue with its start and end time; the server uses those times to cut the mini audio files and upload them to S3.
-- **Interface.** The worker exposes an internal HTTP endpoint on the Docker network and holds the batching queue described above.
+- **Interface.** The worker exposes an internal HTTP endpoint on the Docker network and holds the batching queue described above. The exact interface is in [`contracts/worker-api.md`](../contracts/worker-api.md).
 - **License.** The original CrisperWhisper weights are CC BY-NC 4.0, which suits a non-commercial pilot. The license of the 2.0 weights was not confirmed, so read the model card before relying on it.
 
 ### Video path (placeholder)
@@ -187,7 +187,7 @@ The biggest risk is that 10 simultaneous analyses do not fit in 115 s on one GPU
 Open decisions:
 
 - [ ] Which open-source video models, and which checks each must cover.
-- [ ] If the video worker fails or runs late, return `504`, or return an audio-only result? Check what the contract allows.
+- [x] If the video worker fails or runs late: the request fails by default (500 `PROCESSING_FAILED`, or 504 `TIMEOUT` past the deadline); with `MAI_ALLOW_AUDIO_ONLY_ON_VIDEO_FAILURE=true` a video failure returns the audio-only result, but deadline expiry is always 504.
 - [ ] Final audio model size and backend, decided by the benchmark.
 - [ ] Domain name for the Caddy certificate.
 - [ ] Who starts and stops the instance, and how a session is announced.

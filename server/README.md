@@ -2,7 +2,7 @@
 
 The HTTP entry point of the MAI. It implements the BE ⇄ MAI contract in [`../contracts/be-mai-openapi.yaml`](../contracts/be-mai-openapi.yaml) (v1.1.1). See the [root README](../README.md) for how the whole system works.
 
-> **Current state (Phase 3):** in `real` pipeline mode the server also downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)); the response is still stub data. `MAI_PIPELINE_MODE=stub` skips this. Earlier state (Phase 2): `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis and returns **stub data**, marked with the response header `X-MAI-Stub: true`. A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. It does not download the video, call the analysis lanes or touch S3 yet. **Redis is required** (see [Running Redis locally](#running-redis-locally)); ffmpeg and AWS credentials are not.
+> **Current state (Phase 4):** `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) and merges their results. A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. It does not cut or upload the mini audio files yet (`audio_object_key` values are assigned but nothing is uploaded; S3 is Phase 5). **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)); AWS credentials are not.
 
 ## Prerequisites
 
@@ -67,17 +67,19 @@ Settings come from environment variables with the `MAI_` prefix, or from `.env`.
 | `MAI_API_KEY` | **required** | Key the BE sends in `X-API-Key`. The server won't start without it. |
 | `MAI_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. |
 | `MAI_REQUEST_DEADLINE_SECONDS` | `115` | Internal deadline per request (contract limit is 120 s). Used from Phase 3. |
-| `MAI_ALLOW_AUDIO_ONLY_ON_VIDEO_FAILURE` | `false` | If the video lane fails: `false` fails the request, `true` returns an audio-only result. Used from Phase 4. |
+| `MAI_ALLOW_AUDIO_ONLY_ON_VIDEO_FAILURE` | `false` | If the video lane fails: `false` fails the request, `true` returns an audio-only result. A video timeout still fails the request: deadline expiry is always 504. |
 | `MAI_DEFAULT_OUTPUT_KEY_PREFIX` | `analyses/{request_id}/miscues/` | S3 prefix for mini audio files when the request has no `output_key_prefix`. |
 | `MAI_REDIS_URL` | `redis://localhost:6379/0` | Redis for idempotency records. May hold a password; never logged. |
 | `MAI_IN_PROGRESS_TTL_SECONDS` | `130` | Lease on an in-progress `request_id`. Must be greater than `MAI_REQUEST_DEADLINE_SECONDS`. |
 | `MAI_RESULT_TTL_SECONDS` | `604800` (7 days) | How long a finished result stays replayable. Must be > 0. |
 | `MAI_REDIS_TIMEOUT_SECONDS` | `2` | Connect/read timeout per Redis call. Must be > 0. |
-| `MAI_PIPELINE_MODE` | `real` | `real` downloads and preprocesses the video; `stub` skips it and returns the canned result. |
 | `MAI_SCRATCH_DIR` | system temp dir + `readright-mai` | Root of the per-request scratch directories. |
 | `MAI_MAX_VIDEO_BYTES` | `209715200` (200 MiB) | Largest video the server downloads. Must be > 0. |
 | `MAI_FFMPEG_PATH` | `ffmpeg` | ffmpeg executable (name on `PATH` or full path). |
 | `MAI_FFPROBE_PATH` | `ffprobe` | ffprobe executable (name on `PATH` or full path). |
+| `MAI_AUDIO_WORKER_URL` | `http://localhost:8001` | Base URL of the audio lane. |
+| `MAI_VIDEO_WORKER_URL` | `http://localhost:8002` | Base URL of the video lane. |
+| `MAI_WORKER_CONNECT_TIMEOUT_SECONDS` | `5` | Connect timeout per lane call (capped by the remaining deadline). Must be > 0. |
 
 ## Run
 
@@ -130,7 +132,7 @@ What to expect:
 
 | Try | Result |
 |---|---|
-| Valid request with the key | `200`, stub analysis, header `X-MAI-Stub: true` |
+| Valid request with the key | `200`, merged analysis from the lanes |
 | Same request again | `200`, same body, extra header `X-MAI-Replayed: true` |
 | Same `request_id`, different passage | `400 INVALID_REQUEST` |
 | Redis not running | `503 SERVICE_UNAVAILABLE` with `Retry-After`; `/health/ready` is 503 too |
@@ -154,13 +156,24 @@ Without uv, activate the venv and drop `uv run`. Tests don't need a `.env` and i
 
 ## Installing ffmpeg
 
-`MAI_PIPELINE_MODE=real` (the default) needs `ffmpeg` and `ffprobe` on `PATH`. The server logs a warning at startup if they are missing.
+The server needs `ffmpeg` and `ffprobe` on `PATH`. The server logs a warning at startup if they are missing.
 
 - Windows: `winget install Gyan.FFmpeg` (then open a new terminal)
 - macOS: `brew install ffmpeg`
 - Linux: `apt install ffmpeg`
 
-Without ffmpeg, or for BE integration without real presigned URLs, set `MAI_PIPELINE_MODE=stub`. Tests that need real ffmpeg are skipped when it is missing.
+Tests that need real ffmpeg are skipped when it is missing.
+
+## Fake workers
+
+Until the real lanes exist, run the fake workers (they implement [`../contracts/worker-api.md`](../contracts/worker-api.md)), each in its own terminal:
+
+```bash
+uv run uvicorn devtools.fake_workers:audio_app --port 8001
+uv run uvicorn devtools.fake_workers:video_app --port 8002
+```
+
+The server finds them through `MAI_AUDIO_WORKER_URL` (default `http://localhost:8001`) and `MAI_VIDEO_WORKER_URL` (default `http://localhost:8002`). The audio fake reports a substitution on the first word and an omission on the third; the video fake reports both flags `false`. Set `FAKE_AUDIO_BEHAVIOR=ok|no_speech|error|slow` or `FAKE_VIDEO_BEHAVIOR=ok|error|slow` (and `FAKE_SLOW_SECONDS`, default 200) in a worker's environment to simulate failures; they are read on every request. The fakes read the files the server writes, so run the server and the fakes on the same machine.
 
 ## Project layout
 
@@ -174,13 +187,15 @@ server/
 │   ├── auth.py          # X-API-Key middleware (checked before the body is parsed)
 │   ├── logging.py       # JSON logs with request_id
 │   ├── idempotency.py   # IdempotencyStore: Redis claim / replay / release per request_id
-│   ├── stub.py          # dummy analysis (replaced in Phase 4)
 │   ├── deadline.py      # Deadline + deadline_var (per-request time budget)
 │   ├── scratch.py       # per-request scratch directory
 │   ├── download.py      # presigned-URL video download
 │   ├── media.py         # run_process, ffprobe, ffmpeg conversion
-│   ├── pipeline.py      # real-mode processor: download, probe, convert
+│   ├── pipeline.py      # processor: download, probe, convert, run both lanes, merge
+│   ├── workers.py       # audio/video lane clients and result models
+│   ├── merge.py         # lane results to AnalysisResponse
 │   └── routes/          # analyses.py, health.py
+├── devtools/            # fake_workers.py: fake audio/video lanes for local runs
 ├── tests/
 ├── .env.example
 ├── pyproject.toml

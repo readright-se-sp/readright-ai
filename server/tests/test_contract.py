@@ -72,7 +72,7 @@ def test_model_fields_match_contract(contract, name, model):
     assert required == set(spec["required"])
 
 
-def test_stub_response_validates_against_contract(contract, client, auth):
+def test_analysis_response_validates_against_contract(contract, client, auth):
     response = client.post("/v1/analyses", json=valid_body(), headers=auth)
     validator(contract, "AnalysisResponse").validate(response.json())
 

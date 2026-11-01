@@ -1,3 +1,4 @@
+import logging
 import os
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.models import AnalysisRequest, AnalysisResponse, Miscue, MiscueType
 
 API_KEY = "test-key"
 SIGNATURE = "SUPERSECRETSIGNATURE123"
@@ -33,6 +35,39 @@ def valid_body(**overrides: Any) -> dict[str, Any]:
     return body
 
 
+def fake_analysis(body: AnalysisRequest, settings: Settings | None = None) -> AnalysisResponse:
+    """A fixed, valid result for fake processors; no pipeline involved."""
+    prefix = f"analyses/{body.request_id}/miscues/"
+    return AnalysisResponse(
+        request_id=body.request_id,
+        reading_score=85.0,
+        wpm=60.0,
+        is_word_by_word=False,
+        is_disregard_punctuation=True,
+        is_monotonous=False,
+        is_lack_expression=False,
+        is_hardly_audible=False,
+        is_finger_pointing=False,
+        miscues=[
+            Miscue(
+                actual_phrase="Pam",
+                spoken_phrase="Pa",
+                actual_phoneme=["P", "a", "m"],
+                spoken_phoneme=["P", "a"],
+                read_start=500,
+                read_end=1000,
+                audio_object_key=f"{prefix}miscue-0001.wav",
+                miscue_type=MiscueType.SUBSTITUTION,
+            )
+        ],
+    )
+
+
+async def fake_processor(body: AnalysisRequest, settings: Settings) -> AnalysisResponse:
+    """Default processor injected into the `app` fixture so client tests skip the pipeline."""
+    return fake_analysis(body, settings)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep a developer's MAI_* shell variables from leaking into tests."""
@@ -44,7 +79,22 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def settings() -> Settings:
     # _env_file=None: ignore a local server/.env.
-    return Settings(_env_file=None, api_key=API_KEY, pipeline_mode="stub")  # type: ignore[call-arg]
+    return Settings(_env_file=None, api_key=API_KEY)  # type: ignore[call-arg]
+
+
+@pytest.fixture
+def log_records(caplog: pytest.LogCaptureFixture) -> Iterator[pytest.LogCaptureFixture]:
+    """caplog that also works after `create_app` has replaced the root handlers."""
+    root = logging.getLogger()
+    added = caplog.handler not in root.handlers
+    if added:
+        root.addHandler(caplog.handler)
+    caplog.set_level(logging.DEBUG)
+    try:
+        yield caplog
+    finally:
+        if added:
+            root.removeHandler(caplog.handler)
 
 
 @pytest.fixture
@@ -66,7 +116,7 @@ def redis(redis_server: fakeredis.FakeServer) -> fakeredis.aioredis.FakeRedis:
 
 @pytest.fixture
 def app(settings: Settings, redis):
-    return create_app(settings, redis=redis)
+    return create_app(settings, redis=redis, processor=fake_processor)
 
 
 @pytest.fixture

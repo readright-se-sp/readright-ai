@@ -45,7 +45,6 @@ async def create_analysis(
             "video_host": body.video_url.host,
         },
     )
-    response.headers["X-MAI-Stub"] = "true"  # Phase 4 removes this
 
     store: IdempotencyStore = request.app.state.idempotency
     stored = await store.lookup(body)
