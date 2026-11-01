@@ -125,9 +125,10 @@ components:
           description: Full text of the passage the reader was supposed to read.
         output_key_prefix:
           type: string
+          deprecated: true
           description: |
-            Optional S3 key prefix under which MAI uploads the mini audio files
-            (e.g. `analyses/<request_id>/`). If omitted, MAI uses its default.
+            Deprecated. Ignored by MAI: the mini audio files are always uploaded under
+            `analyses/<request_id>/miscues/`. The field is still accepted.
     AnalysisResponse:
       type: object
       required:

@@ -7,14 +7,6 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from app.workers import (
-    AudioLaneResult,
-    LaneMiscue,
-    VideoLaneResult,
-    deadline_epoch_ms,
-    run_audio_lane,
-    run_video_lane,
-)
 from conftest import valid_body
 from lane_helpers import (
     REQUEST_ID,
@@ -28,6 +20,14 @@ from pydantic import ValidationError
 from app.deadline import Deadline
 from app.errors import MAIError
 from app.models import AnalysisRequest, ErrorCode, MiscueType
+from app.workers import (
+    AudioLaneResult,
+    LaneMiscue,
+    VideoLaneResult,
+    deadline_epoch_ms,
+    run_audio_lane,
+    run_video_lane,
+)
 
 pytestmark = pytest.mark.anyio
 

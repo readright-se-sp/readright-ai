@@ -1,11 +1,11 @@
 """Merging lane results into the AnalysisResponse (criteria 15, 16)."""
 
 import pytest
-from app.merge import merge_results, output_key_prefix
 from conftest import API_KEY, valid_body
 from lane_helpers import REQUEST_ID, audio_result, lane_miscue, video_result
 
 from app.config import Settings
+from app.merge import merge_results, output_key_prefix
 from app.models import AnalysisRequest, AnalysisResponse
 
 SETTINGS = Settings(_env_file=None, api_key=API_KEY)  # type: ignore[call-arg]
@@ -23,15 +23,10 @@ def test_default_prefix_comes_from_settings_template():
     assert output_key_prefix(request(), SETTINGS) == f"analyses/{REQUEST_ID}/miscues/"
 
 
-@pytest.mark.parametrize("given", ["custom/path/", "custom/path", "custom/path///"])
-def test_custom_prefix_has_exactly_one_trailing_slash(given):
-    """criterion 15"""
-    assert output_key_prefix(request(output_key_prefix=given), SETTINGS) == "custom/path/"
-
-
-def test_empty_custom_prefix_falls_back_to_default():
-    """criterion 15"""
-    assert output_key_prefix(request(output_key_prefix=""), SETTINGS) == (
+@pytest.mark.parametrize("given", ["custom/path/", "custom/path", "", None])
+def test_request_prefix_is_ignored(given):
+    """criterion 23"""
+    assert output_key_prefix(request(output_key_prefix=given), SETTINGS) == (
         f"analyses/{REQUEST_ID}/miscues/"
     )
 
@@ -144,12 +139,14 @@ def test_sort_is_stable_for_identical_times():
     assert [m.actual_phrase for m in miscues] == ["first", "second", "third"]
 
 
-def test_custom_prefix_is_used_in_keys():
-    """criterion 16"""
+def test_request_prefix_is_not_used_in_keys():
+    """criterion 23"""
     merged = merge_results(
         request(output_key_prefix="custom/path"), SETTINGS, audio_result(), video_result()
     )
-    assert [m.audio_object_key for m in merged.miscues] == ["custom/path/miscue-0001.wav"]
+    assert [m.audio_object_key for m in merged.miscues] == [
+        f"analyses/{REQUEST_ID}/miscues/miscue-0001.wav"
+    ]
 
 
 def test_zero_miscues_gives_empty_list():

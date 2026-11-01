@@ -13,6 +13,7 @@ from .media import convert_to_wav, probe
 from .merge import merge_results
 from .models import AnalysisRequest, AnalysisResponse, ErrorCode
 from .scratch import scratch_dir
+from .upload import upload_clips
 from .workers import AudioLaneResult, VideoLaneResult, run_audio_lane, run_video_lane
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,7 @@ async def pipeline_processor(body: AnalysisRequest, settings: Settings) -> Analy
         logger.info("stage finished", extra={"stage": "lanes", "duration_ms": _ms(started)})
 
         try:
-            return merge_results(body, settings, audio_result, video_result)
+            response = merge_results(body, settings, audio_result, video_result)
         except ValidationError:
             logger.exception("merging lane results failed")
             raise MAIError(
@@ -97,3 +98,11 @@ async def pipeline_processor(body: AnalysisRequest, settings: Settings) -> Analy
                 "The analysis could not be completed.",
                 {"lane": "audio"},
             ) from None
+
+        started = time.monotonic()
+        await upload_clips(response, audio, settings, deadline)
+        logger.info(
+            "stage finished",
+            extra={"stage": "upload", "duration_ms": _ms(started), "clips": len(response.miscues)},
+        )
+        return response

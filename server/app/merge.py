@@ -1,12 +1,16 @@
+import logging
+
 from .config import Settings
 from .models import AnalysisRequest, AnalysisResponse, Miscue
 from .workers import AudioLaneResult, VideoLaneResult
 
+logger = logging.getLogger(__name__)
+
 
 def output_key_prefix(body: AnalysisRequest, settings: Settings) -> str:
-    prefix = body.output_key_prefix or settings.default_output_key_prefix.format(
-        request_id=body.request_id
-    )
+    if body.output_key_prefix:
+        logger.info("output_key_prefix is deprecated and ignored")
+    prefix = settings.default_output_key_prefix.format(request_id=body.request_id)
     return prefix.rstrip("/") + "/"
 
 

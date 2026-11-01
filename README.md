@@ -50,7 +50,7 @@ The BE ⇄ MAI contract is [`contracts/be-mai-openapi.yaml`](contracts/be-mai-op
 | `video_url` | Presigned S3 GET URL of the webm (audio and video). Must stay valid for the full 120 s. |
 | `passage_title` | Title of the passage. |
 | `passage_content` | Full text the student was asked to read. |
-| `output_key_prefix` | Optional S3 key prefix for the mini audio files. Defaults to `analyses/<request_id>/miscues/`. |
+| `output_key_prefix` | Deprecated and ignored. Mini audio files always go under `analyses/<request_id>/miscues/`. |
 
 **Response (200):** `reading_score`, `wpm`, the flags `is_word_by_word`, `is_disregard_punctuation`, `is_monotonous`, `is_lack_expression`, `is_hardly_audible` and `is_finger_pointing`, and a `miscues` array. Each miscue has:
 
@@ -114,7 +114,7 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose 
 
 | Project | Status |
 |---|---|
-| `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 4 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls and result merging. Fake workers stand in for the lanes; mini audio files are not uploaded yet. |
+| `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 5 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls, result merging, and cutting and uploading the mini audio files to S3. Fake workers stand in for the lanes. |
 | `audio/`, `video/` | Not started. |
 | Docker Compose | Not yet (Phase 7). |
 

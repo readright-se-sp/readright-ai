@@ -37,12 +37,10 @@ def request_fingerprint(body: AnalysisRequest) -> str:
     """Hash of what identifies a request. The video_url query (presigned signature) is left out
     because the BE presigns again on every retry."""
     url = body.video_url
-    prefix = body.output_key_prefix
     port = f":{url.port}" if url.port else ""
     canonical = {
         "passage_title": body.passage_title,
         "passage_content": body.passage_content,
-        "output_key_prefix": prefix.rstrip("/") if prefix is not None else None,
         "video_url": f"{url.scheme}://{url.host}{port}{url.path or ''}",
     }
     payload = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)

@@ -10,7 +10,7 @@ The server is built in 7 phases. Each phase below says what to build, the decisi
 | 2 | Idempotency (Redis) | Done |
 | 3 | Deadline, download, preprocessing | Done |
 | 4 | Worker contract and orchestration | Done |
-| 5 | Mini audio files (cut and upload) | Not started |
+| 5 | Mini audio files (cut and upload) | Done |
 | 6 | Admission control and readiness | Not started |
 | 7 | Packaging and local stack | Not started |
 
@@ -74,7 +74,7 @@ Decisions: package is `app/` (no `src/`); 401 uses code `INVALID_REQUEST` (contr
 Decisions:
 - No `failed` state: any error (including cancellation) deletes the record, so errors are never cached and the BE can retry with the same `request_id`. Failures are visible in the logs.
 - Claim, complete and release carry a random token; complete and release are Lua scripts that act only if the token still matches, so a request whose lease expired cannot overwrite or delete a newer claim.
-- Same `request_id` with a different body → 400 `INVALID_REQUEST`. The fingerprint covers `passage_title`, `passage_content`, `output_key_prefix` (trailing slash ignored) and `video_url` without its query string, because the presigned signature changes on every re-sign. Flagged to the BE team as a contract clarification.
+- Same `request_id` with a different body → 400 `INVALID_REQUEST`. The fingerprint covers `passage_title`, `passage_content` and `video_url` without its query string, because the presigned signature changes on every re-sign (`output_key_prefix` was dropped from it in Phase 5, D8). Flagged to the BE team as a contract clarification.
 - Replays carry `X-MAI-Replayed: true` (header only, not in the contract).
 - Redis error in lookup or claim → 503 `SERVICE_UNAVAILABLE`; in complete → still 200 (error logged, the lease expires); in release → logged, the original error is returned.
 - Added `MAI_REDIS_TIMEOUT_SECONDS` (default 2) so a hung Redis cannot eat the deadline.
@@ -126,7 +126,7 @@ Decisions:
 - Worker clients (httpx) with timeouts from the request deadline; both lanes run with `asyncio` in parallel; on deadline, cancel both (close the connections; optionally a cancel endpoint).
 - Error mapping: audio "no speech" → 422 `NO_SPEECH_DETECTED`; worker error or unreachable → 500 `PROCESSING_FAILED`; deadline → 504 `TIMEOUT`.
 - Video failure policy (agreed): the whole request fails, unless `MAI_ALLOW_AUDIO_ONLY_ON_VIDEO_FAILURE=true`, in which case return the audio result with `is_finger_pointing=false` and log a warning.
-- Merge into `AnalysisResponse`: convert lane times to the contract's milliseconds, assign `audio_object_key` values (`<prefix>miscue-0001.wav`…, prefix from `output_key_prefix` or `MAI_DEFAULT_OUTPUT_KEY_PREFIX`; reuse the prefix logic now in `stub.py`). The upload itself is Phase 5.
+- Merge into `AnalysisResponse`: convert lane times to the contract's milliseconds, assign `audio_object_key` values (`<prefix>miscue-0001.wav`…, prefix from `MAI_DEFAULT_OUTPUT_KEY_PREFIX`; the request's `output_key_prefix` was honoured here until Phase 5 deprecated it, see D8). The upload itself is Phase 5.
 - Remove `stub.py`, the `X-MAI-Stub` header, and the Phase 3 stub mode if no longer needed.
 - Provide **fake workers** (small FastAPI apps following the worker contract, e.g. `devtools/fake_workers.py`) so the server can run locally and in Phase 7's compose before the real lanes exist.
 
@@ -166,6 +166,8 @@ Decisions:
 - Padding around each clip so the word isn't cut off? Recommendation: ~150 ms each side, clamped, configurable.
 - **Omissions** have no spoken audio, but the contract requires `audio_object_key`. Recommendation: the audio lane gives the time where the word should have been read, and the clip covers that gap; confirm with the user.
 - Should old clips be cleaned up (S3 lifecycle rule)? Probably a bucket setting outside the server.
+
+**Decisions (Phase 5).** `boto3` run via `asyncio.to_thread` with a semaphore (`MAI_UPLOAD_CONCURRENCY`), one client per request; padding `MAI_CLIP_PADDING_MS` default 150, clamped; omissions use the lane's time span plus padding; `start_ms` past the recording end is `500 PROCESSING_FAILED`; `MAI_S3_BUCKET` unset warns at startup and fails requests with miscues (`UPLOAD_FAILED`); `MAI_S3_ENDPOINT_URL` for MinIO/moto; HeadBucket readiness deferred to Phase 6. D8: `output_key_prefix` in the request is deprecated and ignored; keys always come from `MAI_DEFAULT_OUTPUT_KEY_PREFIX`, so a caller cannot write under another request's prefix (the field is still accepted, logged at INFO, and no longer part of the idempotency fingerprint).
 
 **Done when.** Clips are cut and uploaded in tests (moto) and once against the real bucket; IAM permissions needed (`s3:PutObject` on the prefix, `s3:ListBucket`/`HeadBucket` for readiness) are documented.
 

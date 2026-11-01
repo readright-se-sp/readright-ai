@@ -6,7 +6,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-from app.merge import merge_results
 from conftest import valid_body
 from lane_helpers import REQUEST_ID, audio_result, video_result, worker_settings
 
@@ -15,6 +14,7 @@ from app.deadline import Deadline, deadline_var
 from app.errors import MAIError
 from app.main import create_app
 from app.media import ProbeResult
+from app.merge import merge_results
 from app.models import AnalysisRequest, ErrorCode
 from app.pipeline import pipeline_processor
 
@@ -307,3 +307,11 @@ async def test_one_slow_lane_past_deadline_still_gives_504_even_with_flag(
     assert response.status_code == 504
     assert response.json()["error"]["code"] == "TIMEOUT"
     assert lanes.video_cancelled
+
+
+@pytest.fixture(autouse=True)
+def _stub_upload_clips(monkeypatch):
+    async def no_upload(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.pipeline.upload_clips", no_upload)

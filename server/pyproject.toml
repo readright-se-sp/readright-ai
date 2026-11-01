@@ -16,6 +16,7 @@ dependencies = [
     "python-dotenv",
     "redis>=5.0.1",
     "httpx",
+    "boto3",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,7 @@ dev = [
     "ruff",
     "fakeredis[lua]>=2.40.0",
     "respx",
+    "moto[s3]",
 ]
 
 [tool.hatch.version]
