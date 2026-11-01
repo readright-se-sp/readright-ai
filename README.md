@@ -120,7 +120,7 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose 
 
 ### Run the server locally
 
-Needs Python 3.11+, [uv](https://docs.astral.sh/uv/) (or pip) and a local Redis (`docker run -d -p 6379:6379 redis:7`; on Windows, Docker Desktop or Memurai).
+Needs Python 3.11+, [uv](https://docs.astral.sh/uv/) (or pip), a local Redis (`docker run -d -p 6379:6379 redis:7`; on Windows, Docker Desktop or Memurai) and `ffmpeg`. Requests with miscues also need an S3 bucket and AWS credentials with **write** access to it (cutting and uploading the mini audio files is done, Phase 5). Downloading the recording needs no credentials, because the BE sends a presigned URL. Only the server needs AWS settings; the audio and video lanes take no cloud configuration.
 
 ```bash
 cd server
@@ -133,8 +133,6 @@ Open http://localhost:8000/docs to try the API. Full setup, configuration, test 
 
 ### What later phases will add
 
-- `ffmpeg` on the machine running the server (Phase 3).
-- AWS credentials with **write** access to the mini audio bucket (Phase 5). Downloading the recording needs no credentials, because the BE sends a presigned URL. Only the server needs AWS settings; the audio and video lanes take no cloud configuration.
 - `docker compose up --build` to run everything together (Phase 7).
 
 Each project has its own `pyproject.toml` and tests. Because the lanes don't depend on S3, they can be developed and tested with local files in their `tests/fixtures/` folders. The server's tests use fake lanes and a fake presigned URL.
