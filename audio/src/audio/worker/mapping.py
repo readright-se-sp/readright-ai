@@ -159,6 +159,9 @@ def to_worker_result(
         indices = sorted({i for r in member_rows for i in r["passage_indices"]})
         actual = " ".join(passage_tokens[i] for i in indices if 0 <= i < len(passage_tokens))
         spoken = " ".join(r["spoken_word"] for r in member_rows if r["spoken_word"])
+        if group.tag == "repetition":
+            # Lane A gives a repetition no passage index; the repeated words are passage words.
+            actual = spoken
         start, end = _span(rows, members, group.tag)
         miscue = WorkerMiscue(
             actual_phrase=actual,

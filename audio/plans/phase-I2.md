@@ -224,3 +224,11 @@ With Lane B off, `actual_phoneme` and `spoken_phoneme` are espeak G2P of the phr
 - Image build and GPU visibility in Docker: to be verified on EC2.
 - Repetition miscues have an empty `actual_phrase`. If the BE wants the repeated word there, it is one line in `mapping.py` plus a decision from the Lane A developer.
 - Lane A's ruff errors (206 in `alignment/`, `tagging/`, `pipeline.py`, `models.py`, `wiring.py`, `transcription/` and two test files) and 20 unformatted files are not touched by this phase. `ruff check .` and `ruff format --check .` pass on everything I added or changed.
+
+## Plan change (2026-11-03): repetition `actual_phrase`
+
+Lane A gives repetition rows no passage index, so the Mapping rule sent `actual_phrase: ""` for them, and the BE couldn't tell which word was repeated. A repeated word is a passage word, so for `repetition` rows:
+- `actual_phrase` = `spoken_phrase` (the repeated text).
+- `actual_phoneme` = espeak G2P of that phrase (the expected sound). `spoken_phoneme` keeps its existing rule.
+
+No contract change. Insertions keep `actual_phrase: ""`. The Lane A developer confirms this in the worker PR review.

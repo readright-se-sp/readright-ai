@@ -153,6 +153,16 @@ def test_insertion_run_is_one_miscue() -> None:
     assert out.miscues[0].actual_phoneme == []
 
 
+def test_repetition_sends_the_repeated_words_as_actual_phrase() -> None:
+    rows = [match(0, 0.0, 0.2), new_row("repetition", spoken=["the", "cat"], start=0.3, end=0.6)]
+    m = run(rows).miscues[0]
+    assert m.miscue_type == "repetition"
+    assert m.actual_phrase == "the cat"
+    assert m.spoken_phrase == "the cat"
+    assert m.actual_phoneme == ["t", "h", "e", "c", "a", "t"]  # FakeG2P: one segment per letter
+    assert m.spoken_phoneme == ["t", "h", "e", "c", "a", "t"]
+
+
 def test_miscue_count_matches_error_count() -> None:
     rows = [
         sub(0, "a", 0.0, 0.2),
