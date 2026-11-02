@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,3 +27,13 @@ class AudioSettings(BaseSettings):
     join_pad_ms: int = 80  # AUDIO_JOIN_PAD_MS, try 50-100
     coverage_min_ms: int = 120  # AUDIO_COVERAGE_MIN_MS
     coverage_max_gap_ms: int = 300  # AUDIO_COVERAGE_MAX_GAP_MS, silence that ends a run
+
+    # Arbitration (B5). Starting values; B6 tunes them (spec §9: measure, do not guess).
+    t_flag: float = 0.25  # AUDIO_T_FLAG
+    t_overrule: float = 0.45  # AUDIO_T_OVERRULE
+
+    @model_validator(mode="after")
+    def _check_thresholds(self) -> Self:
+        if not 0 <= self.t_flag < self.t_overrule:
+            raise ValueError("thresholds must satisfy 0 <= t_flag < t_overrule")
+        return self
