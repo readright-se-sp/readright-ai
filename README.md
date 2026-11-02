@@ -33,7 +33,7 @@ BE ◄── analysis response (200, or a typed error)
 | Project | Role |
 |---|---|
 | `server/` | The only HTTP entry point. Checks the API key and idempotency, downloads and preprocesses the recording, sends work to both lanes, cuts and uploads the mini audio files, and merges the results. |
-| `audio/` | Audio lane. Transcribes the WAV verbatim with CrisperWhisper, aligns it with the passage, and returns the miscues with their timestamps. |
+| `audio/` | Audio lane. Transcribes the WAV verbatim with CrisperWhisper, aligns it with the passage, re-judges each word by sound with a phoneme recogniser, and returns the miscues with their timestamps. |
 | `video/` | Video lane. Decides finger pointing and lack of expression from MediaPipe face and hand landmarks. See [video/README.md](video/README.md). |
 
 The audio and video lanes never touch S3, never call each other and never talk to the BE. They receive ready-to-use files from the server over a shared volume and return results. Only the server talks to S3.
@@ -118,7 +118,7 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-2) as Docker Compose 
 | Project | Status |
 |---|---|
 | `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 7 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls, result merging, and cutting and uploading the mini audio files to S3. Admission control returns 429 when the work cannot finish in time, and `/health/ready` is 503 until Redis, both lanes, S3 and ffmpeg are up. A fake worker stands in for the audio lane. |
-| `audio/` | Not started. |
+| `audio/` | Lane A (CrisperWhisper word lane, post-pass, scoring) and Lane B (xlsr-53 phoneme recogniser, join, compare, arbitration) are integrated in one pipeline (Phase I1, on `feature/lane-b-integration`, no PR yet): `AudioPipeline` runs ASR, Lane A, then Lane B, which adds a `phonetic` object to the rows it judged ([contracts/audio-service.md](contracts/audio-service.md) v6); **`AUDIO_PHONETIC_ENABLED` defaults to false** (Lane A alone) until B6b shows against teacher labels that Lane B improves on it. Measured on the 9 recordings on a GTX 1660 Ti: 15 to 34 s per request, ASR the bulk, the recogniser 1 to 2 s. Phase B6a cut the false overrules of correct words from 15% to 1.6 to 1.9% (midpoint join windows, a coverage guard, a short-word rule), but the label-based tuning (B6b) is still open. No HTTP layer yet: next is the worker API (I2), then B6b. See [audio/ROADMAP.md](audio/ROADMAP.md), [audio/plans/phase-I1.md](audio/plans/phase-I1.md) and [audio/plans/phase-B6a.md](audio/plans/phase-B6a.md). |
 | `video/` | Worker contract implemented with MediaPipe face and hand landmarks; lack of expression is decided from face blendshapes; finger pointing is decided from hand landmarks (both flags decided; Phase 7 of 7 tooling done, calibration on labeled clips and the load test pending, see [video/ROADMAP.md](video/ROADMAP.md)). Runs in Docker in compose, with MediaPipe on CPU. |
 | Docker Compose | Done (Phase 7): `docker compose up --build` runs Caddy, the server, Redis, the real video lane, a fake audio worker and a moto server for S3. See [server/README.md](server/README.md#run-with-docker-compose). |
 

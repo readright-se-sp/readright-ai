@@ -1,29 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "readright-audio"
-version = "0.1.0"
-description = "ReadRight audio analysis microservice (CrisperWhisper word lane)"
-requires-python = ">=3.11"
+dynamic = ["version"]
+description = "ReadRight MAI audio lane (Lane A word lane + Lane B phonetic lane)"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "whisperx>=3.8",
+    "pydantic>=2",
     "pydantic-settings>=2.0",
+    "phonemizer>=3.3",
+    "pyyaml",
+    "torch>=2.6",
+    "transformers>=4.40,<5",
+    "numpy",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pyright"]
+dev = [
+    "pytest>=8",
+    "pyright",
+    "ruff",
+]
 
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+[tool.hatch.version]
+path = "src/audio/__init__.py"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/audio"]
+include = ["src/audio/phonetics/data/*.yaml", "src/audio/phonetics/data/*.json"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "."]
 testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = [
+    "espeak: needs the espeak-ng system library (skipped when it is missing)",
+    "model: needs the model weights in the Hugging Face cache, or network access to download them",
+    "gpu: needs CUDA (skipped when it is missing)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
 
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 extraPaths = ["src", "."]
 reportMissingTypeStubs = false
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }

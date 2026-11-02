@@ -1,6 +1,6 @@
 # Audio service contract
 
-**Version:** `1` (the `version` field of every response)
+**Version:** `6` (the `version` field of every response)
 
 What the server sends the audio service, what comes back, and what every tag means. The audio service's own models (`audio/src/audio/models.py`) follow this file. Change this file first, then the code (see "Rules for changing a contract" in the README).
 
@@ -20,7 +20,7 @@ An empty `passage_text` is an error.
 
 ```json
 {
-  "version": "4",
+  "version": "6",
   "words": [ /* rows, in reading order (see below) */ ],
   "score": {
     "counts": { "match": 9, "mispronunciation": 1, "substitution": 0, "omission": 0, "insertion": 1,
@@ -51,11 +51,34 @@ The README defines the core of each row as `(passage_word, spoken_word, start, e
 | `passage_indices` | int[] | Which passage words (0-based) the row covers. Every passage word appears in exactly one row. Empty for spoken-only rows. |
 | `attempts` | string[] | Earlier tries at the word, before the final one (`["pork"]` for "pork park"). |
 | `detail` | string \| null | Why a tag was given: `ending`, `miscorrection` or `proper_noun`. |
+| `phonetic` | object | Optional (absent when Lane B did not judge the row). What Lane B heard: see [Phonetic evidence](#phonetic-evidence). |
 
 **`error_count`** is the number of rows with `counted: true`.
 **`word_recognition_pct`** = `(total_words − error_count) / total_words × 100`, floored at 0.
 **`reading_level`**: 97 and above is `Independent`, 91 and above is `Instructional`, anything lower is `Frustration`. A score exactly on a cut-off counts as the higher level.
 **`wpm`** = `total_words / (last word end − first word start) × 60`, over the reading only: `off_text` rows (talk before or after the reading) are left out. It is `null` if the recording has no timing.
+
+### Phonetic evidence
+
+Lane B (the phonetic lane) re-judges the rows tagged `match`, `substitution`, `mispronunciation`, `omission` or `insertion` from the sound of the recording. Rows with any other tag are not judged and have no `phonetic` field. The field is also absent on every row when Lane B is turned off (`AUDIO_PHONETIC_ENABLED=false`), fails, or runs out of time (logged as `phonetic_check=skipped`; the request still succeeds with Lane A's tags).
+
+```json
+"phonetic": { "expected_phonemes": ["k", "ɑ", "s", "t"], "heard_phonemes": ["k", "ɔ", "s", "t"],
+              "d_exp": 0.12, "d_hyp": null, "check": "done" }
+"phonetic": { "expected_phonemes": ["f", "ɪ", "ʃ"], "heard_phonemes": ["f"],
+              "d_exp": 0.8, "d_hyp": null, "check": "unverifiable", "reason": "short_word" }
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `expected_phonemes` | string[] | The accepted pronunciation of the passage word(s) that sounds closest to what was heard, as IPA segments (espeak-ng conventions, after `audio/src/audio/phonetics/ipa.py` normalisation: no stress marks or tie bars). Empty for an `insertion`. |
+| `heard_phonemes` | string[] | The phonemes the recogniser placed inside this row's time window, same notation. Empty when none were heard. |
+| `d_exp` | number \| null | Weighted phoneme distance from `heard_phonemes` to the passage word (0 identical; accent-table pairs cost almost nothing). `null` when not computed. |
+| `d_hyp` | number \| null | The same distance to the word the ASR wrote, for `substitution` / `mispronunciation` rows. `null` when not computed. |
+| `check` | string | `done`: Lane B decided the tag, so the letter-based `mispronunciation` rule does not run on this row. `unverifiable`: no timing, no phonemes heard, or a name the pronunciation lexicon does not cover; Lane A's tag stands. `skipped`: reserved. |
+| `reason` | string | Optional (added in v6). Present when `check` is `unverifiable`: why Lane B left Lane A's tag alone. One of `untimed` (the row has no timing), `no_heard` (no phonemes in the window), `name_not_in_lexicon` (a name the pronunciation lexicon does not cover), `low_coverage` (a `match` row where Lane B heard too few of the word's phonemes to overrule it), `short_word` (a `match` row for a very short word, which Lane B never overrules). New values may be added; treat an unknown one as "unverifiable". |
+
+What Lane B may change on a row: `tag` among `match`, `substitution`, `mispronunciation`, `omission` and `insertion` (and `counted` with it). A `match` row is only overruled when Lane B heard the whole word (`AUDIO_COVERAGE_GUARD_RATIO`, default 1.0) and the word has more than `AUDIO_SHORT_WORD_MAX_PHONES` (default 3) phonemes; this keeps false overrules of correct reads under 2% on the calibration recordings (`audio/plans/phase-B6a.md`). A row Lane A tagged `mispronunciation` with detail `ending` may only end as `mispronunciation` or `match`, never `substitution`. Never the row order, the passage coverage, or any other field. A name (`proper_nouns`, or guessed) that is not in the lexicon is never turned from `match` into `mispronunciation` by sound: its `check` is `unverifiable`.
 
 ## Tags
 
@@ -75,12 +98,12 @@ These are the tags listed in the README. They come from the Needleman–Wunsch a
 
 ### Derived tags: set after alignment
 
-These are applied in `tagging/post_pass.py`, in the order below. When Lane B (phonemes and arbiter) exists, it runs **before** this step, so it sees only the base tags.
+These are applied in `tagging/post_pass.py`, in the order below. Lane B (phonemes and arbiter) runs **before** this step, so it sees only the base tags. After it, the `mispronunciation` rule below skips rows whose `phonetic.check` is `done`.
 
 | Tag | Counted | Replaces | Rule | Code |
 |---|---|---|---|---|
 | `self_correction` | no | `match` with `attempts` | A word read more than once. The alignment finds the tries: one-word retries ("pork park", "pork perk park", "saw was"), re-read stretches ("ben rans ben runs") and swaps read twice. Each word row arrives with its earlier readings in `attempts`, and this step judges only the last reading. Right means self-correction. Wrong, with the right word said earlier, keeps the tag and gets `detail: "miscorrection"`, which is counted. A swap half keeps its `swap` tag, so a correction there shows only in `attempts`. | `alignment/needleman_wunsch.py` (re-read and retry states), `repeats.py`, `swaps.py`; verdict in `tagging/attempts.py` (`AttemptJudge`) |
-| `mispronunciation` | yes | `substitution` | The spelling is close (`coast` → "cost") or only the ending differs (`tomatoes` → "tomato", `detail: "ending"`). When unsure, mispronunciation is chosen over substitution. | `tagging/mispronunciation.py` |
+| `mispronunciation` | yes | `substitution` | Rows Lane B judged by sound are skipped. The spelling is close (`coast` → "cost") or only the ending differs (`tomatoes` → "tomato", `detail: "ending"`). When unsure, mispronunciation is chosen over substitution. | `tagging/mispronunciation.py` |
 | `reversal` | yes | `mispronunciation` / `substitution` | The word read backwards, flipped or mirrored (`was` → "saw", `pot` → "top", `on` → "no"). | `tagging/reversal.py`, `alignment/text.py` (`is_reversal`) |
 | `letter_transposition` | yes | `mispronunciation` / `substitution` | Letters out of order but not a full flip (`from` → "form", `animal` → "aminal"), possibly with another slip (`girls` → "gril"). One miscue per word. Phil-IRI transposition = `swap` + `moved` + `letter_transposition`. | `tagging/reversal.py`, `alignment/text.py` (`is_letter_transposition`) |
 
