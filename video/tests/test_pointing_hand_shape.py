@@ -2,7 +2,6 @@ import math
 
 import numpy as np
 import pytest
-from app.pointing import arm_toward_screen, bend_angles, is_pointing_hand
 from pointing_helpers import (
     HAND_KINDS,
     ROTATIONS,
@@ -15,6 +14,8 @@ from pointing_helpers import (
     with_bends,
 )
 from video_helpers import make_settings
+
+from app.pointing import arm_toward_screen, bend_angles, is_pointing_hand
 
 FINGER_NAMES = {"index", "middle", "ring", "pinky", "thumb"}
 

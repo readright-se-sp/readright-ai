@@ -1,6 +1,7 @@
-from app.pointing import count_sweeps
 from pointing_helpers import sawtooth_xs, timestamps
 from video_helpers import make_settings
+
+from app.pointing import count_sweeps
 
 
 def sweeps(xs, **overrides):

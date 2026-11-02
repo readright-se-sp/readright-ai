@@ -98,7 +98,7 @@ def test_no_frames_is_insufficient():
 def test_group_change_above_threshold_is_expressive(group):
     """Criterion 6."""
     frames = block_step(group, DEFAULT_THRESHOLD + 0.05)
-    result = assess_expression(frames, make_settings())
+    result = assess_expression(frames, make_settings(expression_group_min_range={}))
     assert result.is_lack_expression is False
     assert result.reason == "expressive"
 
@@ -107,7 +107,7 @@ def test_group_change_above_threshold_is_expressive(group):
 def test_group_change_below_threshold_is_flat(group):
     """Criterion 6."""
     frames = block_step(group, DEFAULT_THRESHOLD - 0.05)
-    result = assess_expression(frames, make_settings())
+    result = assess_expression(frames, make_settings(expression_group_min_range={}))
     assert result.is_lack_expression is True
     assert result.reason == "flat"
 

@@ -1,6 +1,7 @@
-from app.pointing import episodes
 from pointing_helpers import timestamps
 from video_helpers import make_settings
+
+from app.pointing import episodes
 
 INTERVAL = 200.0
 

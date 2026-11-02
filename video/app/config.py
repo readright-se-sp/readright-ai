@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     expression_min_face_frames: int = Field(default=20, ge=1)
     expression_smooth_frames: int = Field(default=3, ge=1)
     expression_min_range: float = Field(default=0.12, ge=0, le=1)
-    expression_group_min_range: dict[str, float] = {}
+    expression_group_min_range: dict[str, float] = {"brow_down": 0.20}
     pointing_min_hand_score: float = Field(default=0.5, ge=0, le=1)
     pointing_extended_max_bend_deg: float = Field(default=35, ge=0, le=180)
     pointing_curled_min_bend_deg: float = Field(default=60, ge=0, le=180)

@@ -11,7 +11,7 @@ def test_expression_defaults():
     assert settings.expression_min_face_frames == 20
     assert settings.expression_smooth_frames == 3
     assert settings.expression_min_range == 0.12
-    assert settings.expression_group_min_range == {}
+    assert settings.expression_group_min_range == {"brow_down": 0.20}
 
 
 def test_group_min_range_is_read_from_json_env(monkeypatch: pytest.MonkeyPatch):
