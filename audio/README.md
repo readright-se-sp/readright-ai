@@ -27,6 +27,8 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
+`ffmpeg` must be on `PATH` (whisperx shells out to it to read WAVs): Windows `winget install Gyan.FFmpeg` (open a new terminal afterwards), Linux/Docker `apt-get install ffmpeg`. Check with `ffmpeg -version`.
+
 Settings use the `AUDIO_` prefix; copy `.env.example` to `.env` to override them.
 
 Tests marked `model` need the model weights (downloaded on first use) and tests marked `gpu` need CUDA; each is skipped with a reason when its requirement is missing.
@@ -46,7 +48,7 @@ Lane A loads `AUDIO_ASR_MODEL` (default `models/crisper2_large_ct2`, relative to
 uv run ct2-transformers-converter --model nyralabs/CrisperWhisper2.0_large --output_dir models/crisper2_large_ct2 --copy_files tokenizer.json preprocessor_config.json --quantization float16
 ```
 
-`load()` raises "not a CrisperWhisper 2.0 model" if the `[verbatim_N]` tokens are missing. Whisperx also needs an `ffmpeg` binary on `PATH` to read WAVs. On the 6 GB GTX 1660 Ti, ASR (3.3 GB) plus the phoneme model fills the card (6.1 GB peak); `AUDIO_ASR_COMPUTE_TYPE=int8_float16` is the fallback if it runs out of memory. `uv run python devtools/run_pipeline.py` runs everything on the recordings in `data/`. Tests marked `gpu` skip when CUDA or this folder is missing.
+`load()` raises "not a CrisperWhisper 2.0 model" if the `[verbatim_N]` tokens are missing. On the 6 GB GTX 1660 Ti, ASR (3.3 GB) plus the phoneme model fills the card (6.1 GB peak); `AUDIO_ASR_COMPUTE_TYPE=int8_float16` is the fallback if it runs out of memory. `uv run python devtools/run_pipeline.py` runs everything on the recordings in `data/`. Tests marked `gpu` skip when CUDA or this folder is missing.
 
 ### espeak-ng (system dependency)
 
