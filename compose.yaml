@@ -69,6 +69,18 @@ services:
     image: readright-mai-video
     restart: unless-stopped
     cpus: ${MAI_VIDEO_CPUS:-4}
+    # Passed through only when set in the shell or the root .env; unset keeps the image default
+    # from video/app/config.py.
+    environment:
+      - MAI_VIDEO_LOG_LEVEL
+      - MAI_VIDEO_MAX_CONCURRENT_JOBS
+      - MAI_VIDEO_SAMPLE_FPS
+      - MAI_VIDEO_USE_POSE
+      - MAI_VIDEO_EXPRESSION_MIN_RANGE
+      - MAI_VIDEO_EXPRESSION_GROUP_MIN_RANGE
+      - MAI_VIDEO_POINTING_MIN_TOTAL_MS
+      - MAI_VIDEO_POINTING_EXTENDED_MAX_BEND_DEG
+      - MAI_VIDEO_SWEEP_MIN_COUNT
     volumes:
       - scratch:/scratch:ro
     healthcheck:

@@ -1,0 +1,6 @@
+# Load test only (video/devtools/load_test.py): publishes the video worker on the host loopback.
+# docker compose -f compose.yaml -f compose.loadtest.yaml up -d --build
+services:
+  video-worker:
+    ports:
+      - "127.0.0.1:8002:8002"
