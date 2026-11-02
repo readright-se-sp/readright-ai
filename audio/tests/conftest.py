@@ -48,12 +48,11 @@ class FakeG2P:
 @pytest.fixture(scope="session")
 def espeak_g2p():
     """The real espeak G2P, or a skip when espeak-ng cannot be loaded."""
-    from audio.phonetics.g2p import EspeakG2P
+    from audio.phonetics.g2p import build_g2p
     from audio.settings import AudioSettings
 
-    settings = AudioSettings()
     try:
-        return EspeakG2P(settings.espeak_language, settings.espeak_library)
+        return build_g2p(AudioSettings())
     except Exception as exc:  # noqa: BLE001 - any failure to create the backend means no espeak
         pytest.skip(f"espeak-ng is not available: {exc}")
 

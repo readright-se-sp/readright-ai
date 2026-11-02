@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Removed outright: stress, syllable mark, tie bars, linking mark, length marks.
 _STRIPPED = frozenset("ˈˌ.͜͡‿ːˑ")
 
-# Declared as a dict so later phases (B2) can extend it. An empty value drops the segment.
+# Declared as a dict so later phases can extend it. An empty value drops the segment.
 SYMBOL_MAP: dict[str, str] = {
     "ᵻ": "ɪ",
     "ɐ": "ə",
@@ -23,6 +23,20 @@ SYMBOL_MAP: dict[str, str] = {
     "r": "ɹ",
     "ɝ": "ɜ",
     "ʔ": "",
+}
+
+# espeak's merged units, split into single segments so every source (espeak, lexicon, variants,
+# recogniser) uses the same segmentation. Applied after SYMBOL_MAP.
+SPLIT_MAP: dict[str, tuple[str, ...]] = {
+    "ɑɹ": ("ɑ", "ɹ"),
+    "ɔɹ": ("ɔ", "ɹ"),
+    "ɛɹ": ("ɛ", "ɹ"),
+    "ɪɹ": ("ɪ", "ɹ"),
+    "ʊɹ": ("ʊ", "ɹ"),
+    "əl": ("ə", "l"),
+    "aɪə": ("aɪ", "ə"),
+    "aɪɚ": ("aɪ", "ɚ"),
+    "iə": ("i", "ə"),
 }
 
 # Allowed segments: everything the en-us espeak voice produces after normalisation, plus the
@@ -55,21 +69,12 @@ INVENTORY: frozenset[str] = frozenset(
         "ʊ",
         "ʌ",
         "ɚ",
-        # diphthongs and espeak's merged vowel+r / vowel+l units
+        # diphthongs (espeak's merged vowel+r / vowel+l units are split, see SPLIT_MAP)
         "eɪ",
         "aɪ",
         "ɔɪ",
         "aʊ",
         "oʊ",
-        "aɪə",
-        "aɪɚ",
-        "iə",
-        "ɑɹ",
-        "ɔɹ",
-        "ɛɹ",
-        "ɪɹ",
-        "ʊɹ",
-        "əl",
     }
 )
 
@@ -83,9 +88,35 @@ def _normalise_one(segment: str) -> str:
     return unicodedata.normalize("NFC", text)
 
 
+def _split_greedy(segment: str) -> tuple[str, ...] | None:
+    """Split into INVENTORY segments, longest match first; None when that is not possible."""
+    parts: list[str] = []
+    pos = 0
+    longest = max(len(s) for s in INVENTORY)
+    while pos < len(segment):
+        for size in range(min(longest, len(segment) - pos), 0, -1):
+            if segment[pos : pos + size] in INVENTORY:
+                parts.append(segment[pos : pos + size])
+                pos += size
+                break
+        else:
+            return None
+    return tuple(parts)
+
+
+def _expand(segment: str) -> tuple[str, ...]:
+    if segment in SPLIT_MAP:  # step 5
+        return SPLIT_MAP[segment]
+    if segment not in INVENTORY:  # step 6
+        parts = _split_greedy(segment)
+        if parts is not None and len(parts) > 1:
+            return parts
+    return (segment,)
+
+
 def normalise_segments(segments: Iterable[str]) -> PhoneSeq:
-    """Normalise IPA segments: strip marks, map symbols, drop segments that become empty."""
-    out = [n for n in (_normalise_one(s) for s in segments) if n]
+    """Normalise IPA segments: strip marks, map symbols, split merged units, drop empty ones."""
+    out = [part for s in segments if (n := _normalise_one(s)) for part in _expand(n)]
     for seg in out:
         if seg not in INVENTORY and seg not in _warned:
             _warned.add(seg)

@@ -1,12 +1,21 @@
 """Grapheme-to-phoneme via espeak-ng (phonemizer)."""
 
+import logging
 import os
+import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from audio.phonetics.ipa import normalise_segments
 from audio.types import PhoneSeq
+
+if TYPE_CHECKING:
+    from audio.settings import AudioSettings
+
+logger = logging.getLogger(__name__)
+
+WINDOWS_ESPEAK_LIBRARY = Path(r"C:\Program Files\eSpeak NG\libespeak-ng.dll")
 
 
 class G2PError(Exception):
@@ -52,3 +61,12 @@ class EspeakG2P:
                 raise G2PError(word)
             results.append(seq)
         return results
+
+
+def build_g2p(settings: "AudioSettings") -> EspeakG2P:
+    """The only place a G2P is built from settings."""
+    library = settings.espeak_library
+    if library is None and sys.platform == "win32" and WINDOWS_ESPEAK_LIBRARY.exists():
+        library = WINDOWS_ESPEAK_LIBRARY
+        logger.info("using the default espeak-ng library at %s", library)
+    return EspeakG2P(settings.espeak_language, library)

@@ -13,3 +13,10 @@ class AudioSettings(BaseSettings):
     # before the espeak backend is created.
     espeak_library: Path | None = None
     passage_cache_size: int = 128  # prepared passages kept in memory
+
+    # Phoneme recogniser (B2). The model and fp16 defaults are set from the spike.
+    phoneme_model: str = "facebook/wav2vec2-xlsr-53-espeak-cv-ft"  # Hugging Face id or local path
+    phoneme_device: str = "auto"  # auto (CUDA if available), cuda, cpu
+    phoneme_fp16: bool = False  # ignored on CPU
+    phoneme_chunk_s: float = 20  # audio per forward pass
+    phoneme_context_s: float = 2  # extra audio each side of a chunk; its frames are discarded

@@ -13,6 +13,9 @@ dependencies = [
     "pydantic-settings",
     "phonemizer>=3.3",
     "pyyaml",
+    "torch>=2.6",
+    "transformers>=4.40,<5",
+    "numpy",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +34,11 @@ include = ["src/audio/phonetics/data/*.yaml"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["espeak: needs the espeak-ng system library (skipped when it is missing)"]
+markers = [
+    "espeak: needs the espeak-ng system library (skipped when it is missing)",
+    "model: needs the model weights in the Hugging Face cache, or network access to download them",
+    "gpu: needs CUDA (skipped when it is missing)",
+]
 
 [tool.ruff]
 line-length = 100
@@ -39,3 +46,11 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }

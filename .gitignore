@@ -16,3 +16,5 @@ Thumbs.db
 misc/
 # Audio lane local recordings (student audio, never commit)
 audio/data/
+# Phoneme spike output (raw CSV, aligned dumps, Whisper transcripts: student content)
+audio/devtools/out/

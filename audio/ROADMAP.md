@@ -16,7 +16,7 @@ This file covers Lane B and the interim shared pieces. Lane A adds its own phase
 |---|---|---|
 | B0 | Project setup and shared types (interim) | Done: [plans/phase-B0.md](plans/phase-B0.md) |
 | B1 | Stage 0 passage preparation (espeak-ng IPA) | Done: [plans/phase-B1.md](plans/phase-B1.md) |
-| B2 | Phoneme recogniser spike and implementation | Not started |
+| B2 | Phoneme recogniser spike and implementation | Done: [plans/phase-B2.md](plans/phase-B2.md), spike: [plans/phase-B2-spike.md](plans/phase-B2-spike.md) |
 | B3 | Join by time and coverage candidates | Not started |
 | B4 | Compare (weighted phoneme distance, accent table) | Not started |
 | B5 | Arbitration | Not started |
@@ -142,6 +142,8 @@ Measure:
 
 **Done when.** The spike numbers are recorded below and a model is chosen.
 
+**Result.** Chosen: `facebook/wav2vec2-xlsr-53-espeak-cv-ft`, fp32 (`AUDIO_PHONEME_FP16=false`). See [plans/phase-B2-spike.md](plans/phase-B2-spike.md).
+
 ## Phase B3 — Join by time
 
 **Build.**
@@ -237,3 +239,4 @@ INSERTION passes through unchanged to the post-pass.
 - Phonemes in the worker and BE contracts are IPA segments from espeak-ng conventions, after `ipa.py` normalisation.
 - B0 (2026-11-02): shared types are frozen pydantic v2 models (`extra="forbid"`, tuples), not dataclasses. `Unit.passage_index` was added to the Rev 2 `Unit` (flag to the Lane A developer at reconciliation). The project uses a `src/audio/` layout and `requires-python = ">=3.11,<3.13"` (torch and transformers wheels lag new Python releases). A single `WordLabel` enum (contract values plus `correct`) is used everywhere; `STAGE3_LABELS` and `ARBITRATION_LABELS` are frozensets. `PreparedPassage.pronunciations` is stored as a read-only `MappingProxyType` and serialised as a dict.
 - B1 (2026-11-02): espeak-ng via `phonemizer`, voice `en-us`, no stress marks; length marks are stripped (tense/lax survives in vowel quality). The lexicon replaces espeak (Filipino form first, anglicised second); `variants.yaml` adds to espeak's output. Heteronyms get both readings. The passage title is not read or scored. G2P input (`spoken_form`) and matching key (`interim_key`) are separate; `interim_key` is an interim stand-in for Lane A's Normalise (Rev 2 rules 1, 4, 7 only) and is the one function to replace at reconciliation. The lexicon lives in code-side YAML (`phonetics/data/`), not in `passages.proper_nouns`. `INVENTORY` is frozen in `ipa.py` (54 segments, including espeak's merged units such as `ɛɹ`, `ɑɹ`, `əl`, `aɪɚ`, and the Tagalog `a o u ɾ`). `LaneAResult` now rejects overlapping units. The six test passages are made-up placeholders; the lexicon is unreviewed by a Filipino speaker.
+- B2 (2026-11-02): wav2vec2 CTC through `transformers`, greedy decoding, times on the 20 ms grid; 20 s chunks with 2 s context whose frames are discarded; WAV read with stdlib `wave` (no ffmpeg or torchaudio). `deadline_ms` is an absolute UTC epoch time in ms, as in the worker contract. espeak's merged units (`ɛɹ ɑɹ ɔɹ ɪɹ ʊɹ əl aɪə aɪɚ iə`) are now split into single segments by `SPLIT_MAP` plus a greedy fallback, and removed from `INVENTORY`; `g2p_golden.yaml` was regenerated once for this (9 words). `build_g2p(settings)` is the only place a G2P is built from settings (Windows default espeak path when unset). Model chosen by the pre-agreed rule: PER medians 0.358 (lv-60) and 0.368 (xlsr-53) are within 0.02, so the lower warm GPU latency wins, which is xlsr-53 by about 1% (noise-level; lv-60 has the slightly lower PER and fewer non-English phones). fp16 gives NaN/Inf logits on the GTX 1660 Ti, so it stays off; re-check on the A10G in the deployment benchmark. Non-English tokens are kept; the xlsr model emitted `e` (16 times) and a few `ø y ɨ x` on the 9 recordings, so B4 needs a feature distance for `e`. torch is >=2.6 from the cu126 index, because transformers refuses `torch.load` of the models' `pytorch_model.bin` below torch 2.6 (CVE-2025-32434) and torch 2.6+ has no cu121 wheels.
