@@ -58,3 +58,30 @@ Passage phonemes come from [espeak-ng](https://github.com/espeak-ng/espeak-ng), 
 - Linux/Docker: `apt-get install espeak-ng`.
 
 On Windows, `build_g2p` uses `C:\Program Files\eSpeak NG\libespeak-ng.dll` when `AUDIO_ESPEAK_LIBRARY` is unset and the file exists, so no `.env` is needed on a default install. Tests marked `espeak` are skipped, with a reason, when the library cannot be loaded. Other settings: `AUDIO_ESPEAK_LANGUAGE` (default `en-us`) and `AUDIO_PASSAGE_CACHE_SIZE` (default `128`).
+
+## Benchmark (dev machine, not deployment)
+
+Measured 2026-11-02 with `devtools/benchmark.py` (real `AudioPipeline.run`, Lane B on, 9 recordings x 3 runs after one warm-up). Dev machine, not deployment. Excludes the server's download, WAV conversion, clip cutting and S3 upload.
+Stage 5 is `PhoneticReviewer.review` minus stage 4 (it also covers passage prep, row adapting and write-back).
+
+| Stage | median ms | p95 ms | max ms |
+|---|---:|---:|---:|
+| 1 WAV read | 77 | 110 | 126 |
+| 2 ASR (transcribe + align) | 15144 | 21655 | 24082 |
+| 3 Lane A rows | 307 | 353 | 366 |
+| 4 Lane B recogniser | 894 | 1303 | 1365 |
+| 5 Lane B join + compare + arbitrate | 19 | 24 | 27 |
+| 6 post-pass + scoring | 0 | 0 | 1 |
+| 7 total | 16377 | 23051 | 25863 |
+| Lane A only (7 - 4 - 5) | 15545 | 22014 | 24481 |
+
+- Total per second of audio: median 384 ms/s, p95 551, max 555 (Lane A only: median 363 ms/s)
+- Peak VRAM: torch max_memory_allocated 2034 MB (reserved 2718 MB); whole-device peak in use 6144 MB (torch + CTranslate2); 5659 MB in use after load
+- Model load: CrisperWhisper 2.0 large + alignment 14466 ms; Lane B recogniser 19501 ms
+- 9 recordings x 3 runs = 27 timed runs, one warm-up not counted
+
+Machine:
+- GPU: NVIDIA GeForce GTX 1660 Ti, 6.0 GiB
+- nvidia-smi after run: NVIDIA GeForce GTX 1660 Ti, 6144 MiB, 5641 MiB, 546.01 (name, total, used, driver)
+- CUDA (torch build): 12.6; torch 2.8.0+cu126; ctranslate2 4.8.4; whisperx 3.8.6
+- ASR_COMPUTE_TYPE=float16, ASR_BATCH_SIZE=8, PHONETIC_ENABLED=true, PHONEME_MODEL=facebook/wav2vec2-xlsr-53-espeak-cv-ft (fp16=False)
