@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic>=2",
     "pydantic-settings",
+    "numpy>=2.4.6",
 ]
 
 [project.optional-dependencies]

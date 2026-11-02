@@ -25,6 +25,7 @@ Package `app/` at the top level (no `src/` layout, same as `server/`).
 - `models.py`: job/result/error models and `ErrorCode`.
 - `errors.py`: `LaneError`, `STATUS_BY_CODE`, error handlers.
 - `analyzer.py`: `Analyzer` protocol, `JobContext`, `JobCancelled`, `PlaceholderAnalyzer`.
+- `frames.py`: `probe`, `plan_sampling`, `iter_frames` (ffprobe/ffmpeg to RGB frames).
 - `jobs.py`: `JobRunner` (concurrency limit, queue, disconnect polling, stats).
 - `logging.py`: JSON logs, `job_id_var`.
 
@@ -33,6 +34,7 @@ Package `app/` at the top level (no `src/` layout, same as `server/`).
 - The app is built by `create_app(settings=None, analyzer=None)`. No global settings singleton.
 - Errors: raise `LaneError(ErrorCode.X, message)`; the status comes from `STATUS_BY_CODE`. No ad-hoc error JSON.
 - The analyzer is blocking and runs in a worker thread. It must call `ctx.check()` at least once per frame.
+- ffmpeg runs as a subprocess and is killed and reaped in a `finally`, so cancel, deadline, error and generator close never leave it running.
 - Never write or log frames, landmarks or video content.
 - Settings use the `MAI_VIDEO_` prefix. Every new setting goes in `.env.example` and the README table.
 - Use relative imports inside `app/`.

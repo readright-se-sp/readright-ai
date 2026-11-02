@@ -7,7 +7,7 @@ The video lane is built in 7 phases. Each phase below says what to build, the in
 | # | Phase | Status |
 |---|---|---|
 | 1 | Project setup and worker contract layer | Done |
-| 2 | Frame decoding (ffprobe + ffmpeg) | Not started |
+| 2 | Frame decoding (ffprobe + ffmpeg) | Done |
 | 3 | MediaPipe landmarks and models | Not started |
 | 4 | Packaging and compose | Not started |
 | 5 | Lack of expression | Not started |
@@ -199,7 +199,16 @@ class JobRunner:
 
 **Done when.** The criteria pass with ffmpeg installed, and skip cleanly without it.
 
-**Decisions.** (filled in when the phase is done)
+**Decisions.**
+- ffmpeg runs as a subprocess (no PyAV); `subprocess.Popen` is looked up at call time so tests can patch it. ffprobe uses `subprocess.run` with `probe_timeout_seconds`.
+- A truncated webm that decoded some frames keeps them and logs a warning (exit code and frame count only); zero frames is 422 `MEDIA_UNREADABLE`.
+- Timestamps are synthetic, `round(i * 1000 / fps)`, from the `fps` filter.
+- ffmpeg stderr goes to DEVNULL (no drain thread); stderr and the path are never logged.
+- The pipe read blocks, so `ctx.check()` runs only between frames (no reader thread).
+- A rotation that is not a multiple of 90 is rounded to the nearest 90 and normalized to 0/90/180/270.
+- Missing duration: the format duration, then the largest packet `pts_time` from a demux-only pass, else `None` (fps stays `SAMPLE_FPS`).
+- The warning for a non-zero ffmpeg exit uses the real exit code read at end of stream; a process killed by us is never reported.
+- ffprobe/ffmpeg binary missing is 500 `INTERNAL`; ffprobe timeout is `MEDIA_UNREADABLE`.
 
 ---
 
