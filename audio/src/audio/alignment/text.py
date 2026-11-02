@@ -84,6 +84,14 @@ def word_distance(a: str, b: str) -> float:
     return min(1.0, damerau(a, b) / max(len(a), len(b)))
 
 
+_HUM = re.compile(r"(?:[hu]{0,2}m+|mh?m+)")
+
+
+def is_hum(word: str) -> bool:
+    """A humming interjection: m, mm, mmm, hm, hmm, um, umm, uhm, hum, mhm. Any of them reads 'Mmm'."""
+    return _HUM.fullmatch(word) is not None
+
+
 def is_anagram(a: str, b: str) -> bool:
     """Same letters, different order (was/saw, on/no, from/form)."""
     return a != b and len(a) > 1 and sorted(a) == sorted(b)

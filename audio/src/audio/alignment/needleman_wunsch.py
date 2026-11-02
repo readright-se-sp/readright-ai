@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from audio.alignment.text import is_anagram, word_distance
+from audio.alignment.text import is_anagram, is_hum, word_distance
 from audio.models import Column, Token
 
 _INF = 1 << 60
@@ -126,6 +126,8 @@ class NeedlemanWunschAligner:
         return self._trace(score, back, span, crossed, passage, heard)
 
     def _cost(self, expected: str, heard: str) -> int:
+        if is_hum(expected) and is_hum(heard):
+            return 0  # 'um' reads 'Mmm'
         d = word_distance(expected, heard)
         if is_anagram(expected, heard):
             d = min(d, _ANAGRAM_COST)

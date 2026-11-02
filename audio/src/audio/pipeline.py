@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from audio.alignment.cleanup import TranscriptCleaner
-from audio.alignment.detection import Detector
+from audio.alignment.detection import Detector, place_omissions
 from audio.alignment.needleman_wunsch import AlignerProtocol
 from audio.alignment.off_text import OffTextDetector
 from audio.alignment.repeats import RepeatFolder
@@ -23,7 +23,7 @@ class RowReviewerProtocol(Protocol):
 
 class WordLane:
     """Lane A after ASR: normalise -> NW (with re-reads) -> fold repeats -> swaps -> talk outside the reading
-    -> detect -> moved (base tags).
+    -> detect -> moved (base tags) -> omission times.
     """
 
     def __init__(
@@ -51,7 +51,7 @@ class WordLane:
         items = self._repeats.fold(self._aligner.align(passage, cleaned.tokens), passage)
         items = self._off_text.mark(self._swaps.detect(items, passage))
         rows = self._detector.detect(items, cleaned.side_events, passage, proper_nouns)
-        return self._moved.tag(rows)
+        return place_omissions(self._moved.tag(rows))
 
 
 class AudioPipeline:

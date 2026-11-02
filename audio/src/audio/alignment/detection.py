@@ -1,5 +1,6 @@
 from audio.alignment.labels import WordLabeler
-from audio.models import AlignedItem, AlignedWord, Column, Repeat, SideEvent, Swap, Token, new_row
+from audio.alignment.text import is_hum
+from audio.models import AlignedItem, AlignedWord, Column, Repeat, SideEvent, Swap, Token, new_row, retag
 
 
 class Detector:
@@ -36,6 +37,8 @@ class Detector:
                 self._slot(rows, pending, None if item.h is None else item.h.id)
                 rows.append(self._row(item, passage, proper_nouns))
         rows.extend(s.row for s in pending)
+        if any(is_hum(w) for w in passage):
+            rows = [retag(r, "filler") if r["tag"] == "insertion" and _is_hum_row(r) else r for r in rows]
         return rows
 
     @staticmethod
@@ -99,3 +102,42 @@ class Detector:
                 )
             case _:
                 raise ValueError(f"malformed alignment item: {item!r}")
+
+
+def _is_hum_row(row: AlignedWord) -> bool:
+    heard = row["spoken_word"]
+    return heard is not None and is_hum(heard)
+
+
+def place_omissions(rows: list[AlignedWord]) -> list[AlignedWord]:
+    """Gives each omitted word the time where it should have been read.
+
+    The span is the gap between the last heard word before it and the first heard word after
+    it; several omissions in a row share that gap by letter count. At the very start or end of
+    the reading the span is zero-length at the edge. Run after MovedWordTagger, so the passage
+    half of a moved word stays untimed.
+    """
+    out = list(rows)
+    k = 0
+    while k < len(out):
+        if out[k]["tag"] != "omission":
+            k += 1
+            continue
+        e = k
+        while e < len(out) and out[e]["tag"] == "omission":
+            e += 1
+        before = next((r["end"] for r in reversed(out[:k]) if r["end"] is not None), None)
+        after = next((r["start"] for r in out[e:] if r["start"] is not None), None)
+        lo = before if before is not None else after
+        hi = after if after is not None else before
+        if lo is not None and hi is not None:
+            hi = max(hi, lo)
+            letters = [len(r["passage_word"] or "") or 1 for r in out[k:e]]
+            t = lo
+            for n, size in zip(range(k, e), letters):
+                row = out[n].copy()
+                row["start"], t = t, t + (hi - lo) * size / sum(letters)
+                row["end"] = hi if n == e - 1 else t
+                out[n] = row
+        k = e
+    return out

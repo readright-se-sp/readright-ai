@@ -25,7 +25,26 @@ def test_lane_a_rows_have_the_planned_shape(lane: AudioPipeline) -> None:
     ]
     words = lane.analyze(spoken("the dog"), "the small dog")["words"]
     assert words[1]["passage_word"] == "small" and words[1]["spoken_word"] is None
-    assert words[1]["start"] is None and words[1]["tag"] == "omission"
+    assert words[1]["tag"] == "omission"
+    # Omissions get the time where the word should have been: between 'the' and 'dog'.
+    assert (words[1]["start"], words[1]["end"]) == (words[0]["end"], words[2]["start"])
+
+
+def test_skipped_words_share_the_gap_by_letter_count(lane: AudioPipeline) -> None:
+    words = lane.analyze(spoken("it the table"), "it went up the table")["words"]
+    went, up = words[1], words[2]
+    assert (went["tag"], up["tag"]) == ("omission", "omission")
+    assert went["start"] == words[0]["end"] and up["end"] == words[3]["start"] and went["end"] == up["start"]
+    assert round(went["end"] - went["start"], 3) == round(2 * (up["end"] - up["start"]), 3)  # 4 letters vs 2
+
+
+def test_any_hum_reads_a_hum_in_the_passage(lane: AudioPipeline) -> None:
+    """Real recording: the child said 'um' for 'Mmm, Cheese!'. It's the reading, not a filler."""
+    for hum in ("Um", "[UM]", "Hmm", "Mmm"):
+        rows = lane.analyze(spoken(f"the table. {hum}, cheese!"), "the table. Mmm, Cheese!")["words"]
+        assert all(w["tag"] == "match" for w in rows), hum
+    rows = lane.analyze(spoken("the um table. Mmm, cheese!"), "the table. Mmm, Cheese!")["words"]
+    assert [(w["tag"], w["spoken_word"]) for w in rows if w["tag"] != "match"] == [("filler", "um")]
 
 
 def test_reversal_is_tagged_in_post_pass(lane: AudioPipeline) -> None:

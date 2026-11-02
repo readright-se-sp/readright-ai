@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from audio.alignment.text import word_distance
+from audio.alignment.text import is_hum, word_distance
 from audio.models import EventDetail, Tag
 
 _ENDINGS = ("s", "es", "ed", "d", "ing")
@@ -25,8 +25,10 @@ class WordLabeler:
         self._mispronunciation_below = mispronunciation_below
 
     def base(self, expected: str, heard: str, proper_nouns: frozenset[str]) -> WordLabel:
-        """Alignment tag: match or substitution. Any reading of a proper noun is a match."""
-        if heard == expected:
+        """Alignment tag: match or substitution. Any reading of a proper noun is a match, and any
+        hum reads a hum ('um' for 'Mmm').
+        """
+        if heard == expected or (is_hum(heard) and is_hum(expected)):
             return WordLabel("match", None)
         if expected in proper_nouns:
             return WordLabel("match", "proper_noun")
