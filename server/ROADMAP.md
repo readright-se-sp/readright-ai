@@ -202,7 +202,7 @@ Decisions:
 - D6 Readiness checks run concurrently, each bounded by `MAI_DEPENDENCY_TIMEOUT_SECONDS`; S3 uses `HeadBucket` (needs `s3:ListBucket`); ffmpeg checks both binaries.
 - D7 Stats cache per lane, TTL `MAI_STATS_CACHE_SECONDS` (default 1.0), single-flight, failures not cached.
 
-## Phase 7 — Packaging and local stack
+## Phase 7 — Packaging and local stack (done)
 
 **Goal.** Run the whole MAI with `docker compose up` locally and on the EC2 instance.
 
@@ -214,9 +214,15 @@ Decisions:
 - Root `.env.example` for compose-level settings; update both READMEs and the deployment doc.
 - An end-to-end smoke test through compose (fake workers; S3 via MinIO or moto server locally).
 
-**Open questions.**
-- Local S3 for the smoke test: MinIO or moto server? Recommendation: MinIO.
-- Whether the start/stop/idle-shutdown scripts belong in this repo (`scripts/`) or with the infrastructure.
-- Python version for the image (3.11 minimum; 3.12 or 3.13 recommended).
+**Decisions (Phase 7).**
+- D1 Image `python:3.13-slim-bookworm`; uv copied from a pinned `ghcr.io/astral-sh/uv` image; `uv sync --frozen --no-dev`.
+- D2 `compose.yaml` is production-shaped; `compose.override.yaml` (auto-loaded locally) adds the moto S3 and `s3-init`. On EC2: `docker compose -f compose.yaml up -d`.
+- D3 Fake workers run from the api image with a different `command`; replaced by the real lane images later.
+- D4 Caddy site address from `MAI_SITE_ADDRESS` (default `localhost`); upstream read/write timeouts 150 s, dial 5 s; request body limit 1 MB.
+- D5 `MAI_API_KEY` is a required compose interpolation (shell or git-ignored root `.env`); on EC2 `start-stack.sh` reads it from SSM Parameter Store.
+- D6 `scripts/start-stack.sh` and `scripts/idle-check.sh` live in this repo; starting/stopping the instance from a laptop stays with infrastructure.
+- D7 The smoke test is opt-in (`READRIGHT_SMOKE_URL`) and assumes the stack is already up.
+- D8 Images are built on the instance from a git checkout (no ECR).
+- D9 Local S3 is moto server (pinned tag, in memory); `s3-init` reuses the api image. MinIO is no longer used.
 
 **Done when.** `docker compose up --build` serves `POST /v1/analyses` end to end with fake workers locally; the README explains running the stack and deploying it to the instance.

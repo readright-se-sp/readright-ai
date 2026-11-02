@@ -7,9 +7,9 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
-from app.admission import WorkerStats
 from conftest import API_KEY, fake_analysis, valid_body
 
+from app.admission import WorkerStats
 from app.config import Settings
 from app.main import create_app
 

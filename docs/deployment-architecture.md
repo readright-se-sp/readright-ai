@@ -110,6 +110,8 @@ One on-demand GPU instance, run only during sessions, with Docker Compose managi
 | Region | ap-southeast-1 (Singapore), same region as the S3 bucket |
 | Scheduling | Start and stop manually or with a small script; an idle check stops the instance after 30 minutes with no requests (it reads `last_request_at`, or `started_at` if null, from the server's `/health/live`) |
 
+Packaging in this repo: `compose.yaml` (caddy, api, redis, audio-worker, video-worker; only caddy publishes ports), `compose.override.yaml` (local only: moto server as S3), `Caddyfile` (site address from `MAI_SITE_ADDRESS`, upstream timeouts 150 s, 1 MB request limit) and `scripts/`. `scripts/start-stack.sh` reads the API key from SSM Parameter Store and runs `docker compose -f compose.yaml up -d --build` from a git checkout (no registry). `scripts/idle-check.sh` runs every 5 minutes and shuts the instance down after 30 minutes idle. The instance's IMDSv2 hop limit must be 2 so containers can use the instance role.
+
 Decisions behind these choices:
 
 - **EC2, not Lightsail.** Lightsail has no GPU instances, so CrisperWhisper and the video models would run on CPU, far too slowly for the 120 s limit.

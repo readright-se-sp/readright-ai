@@ -1,0 +1,42 @@
+# Loaded automatically by plain `docker compose up`: local S3 (moto server). Not used on EC2,
+# where `docker compose -f compose.yaml up -d` talks to real S3 through the instance role.
+services:
+  s3:
+    image: motoserver/moto:5.1.14
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+
+  s3-init:
+    build: ./server
+    image: readright-mai-server
+    depends_on:
+      - s3
+    restart: "no"
+    command:
+      - python
+      - -c
+      - |
+        import boto3, time
+        s3 = boto3.client("s3", endpoint_url="http://s3:5000", region_name="ap-southeast-1", aws_access_key_id="testing", aws_secret_access_key="testing")
+        for _ in range(60):
+            try:
+                s3.create_bucket(Bucket="readright-local", CreateBucketConfiguration={"LocationConstraint": "ap-southeast-1"})
+                break
+            except s3.exceptions.BucketAlreadyOwnedByYou:
+                break
+            except Exception:
+                time.sleep(1)
+        else:
+            raise SystemExit(1)
+
+  api:
+    environment:
+      MAI_S3_BUCKET: readright-local
+      MAI_S3_ENDPOINT_URL: http://s3:5000
+      AWS_REGION: ap-southeast-1
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+    depends_on:
+      s3-init:
+        condition: service_completed_successfully

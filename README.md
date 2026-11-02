@@ -97,10 +97,13 @@ readright-ai/
 ├── video/           # video lane (models to be chosen)
 ├── contracts/       # be-mai-openapi.yaml, and internal lane contracts
 ├── docs/            # deployment-architecture.md
+├── scripts/         # start-stack.sh, idle-check.sh (instance side)
+├── compose.yaml     # production stack; compose.override.yaml adds local S3
+├── Caddyfile
 └── README.md
 ```
 
-Each project keeps its own `.env.example` (see `server/.env.example`). `compose.yaml` and a `Caddyfile` will be added at the root when the services are packaged.
+Each project keeps its own `.env.example` (see `server/.env.example`). `compose.yaml`, `compose.override.yaml` (local S3), the `Caddyfile` and `.env.example` at the root run the stack; `scripts/` holds the instance start and idle-shutdown scripts.
 
 Each of `server/`, `audio/` and `video/` is an independent Python project with its own `pyproject.toml`, `Dockerfile` and `tests/`. They share no code. Where they need to agree on a data shape, the agreement is documented in `contracts/` and each project keeps its own models.
 
@@ -114,9 +117,9 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose 
 
 | Project | Status |
 |---|---|
-| `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 6 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls, result merging, and cutting and uploading the mini audio files to S3. Admission control returns 429 when the work cannot finish in time, and `/health/ready` is 503 until Redis, both lanes, S3 and ffmpeg are up. Fake workers stand in for the lanes. |
+| `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 7 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls, result merging, and cutting and uploading the mini audio files to S3. Admission control returns 429 when the work cannot finish in time, and `/health/ready` is 503 until Redis, both lanes, S3 and ffmpeg are up. Fake workers stand in for the lanes. |
 | `audio/`, `video/` | Not started. |
-| Docker Compose | Not yet (Phase 7). |
+| Docker Compose | Done (Phase 7): `docker compose up --build` runs Caddy, the server, Redis, fake workers and a moto server for S3. See [server/README.md](server/README.md#run-with-docker-compose). |
 
 ### Run the server locally
 
@@ -130,10 +133,6 @@ uv run uvicorn app.main:create_app --factory --reload --port 8000
 ```
 
 Open http://localhost:8000/docs to try the API. Full setup, configuration, test and troubleshooting steps are in [`server/README.md`](server/README.md).
-
-### What later phases will add
-
-- `docker compose up --build` to run everything together (Phase 7).
 
 Each project has its own `pyproject.toml` and tests. Because the lanes don't depend on S3, they can be developed and tested with local files in their `tests/fixtures/` folders. The server's tests use fake lanes and a fake presigned URL.
 

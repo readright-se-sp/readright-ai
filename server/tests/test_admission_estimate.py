@@ -3,9 +3,9 @@
 import math
 
 import pytest
-from app.admission import WorkerStats, estimate_finish_seconds, retry_after_seconds
 from pydantic import ValidationError
 
+from app.admission import WorkerStats, estimate_finish_seconds, retry_after_seconds
 from app.config import Settings
 
 
