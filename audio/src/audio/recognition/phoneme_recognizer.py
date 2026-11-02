@@ -43,16 +43,19 @@ class LoadedModel:
 
 
 def _load_hf(model_id: str, device: str, fp16: bool) -> LoadedModel:
-    from transformers import AutoModelForCTC, AutoProcessor
+    from transformers import AutoFeatureExtractor, AutoModelForCTC, Wav2Vec2CTCTokenizer
 
-    processor = AutoProcessor.from_pretrained(model_id)
+    # Load the feature extractor and vocab through the base CTC tokenizer rather
+    # than AutoProcessor / Wav2Vec2PhonemeCTCTokenizer, which instantiates an espeak
+    # backend on import — unnecessary because we never call its phonemize path.
+    feature_extractor = AutoFeatureExtractor.from_pretrained(model_id)
+    tok = Wav2Vec2CTCTokenizer.from_pretrained(model_id)
     model = AutoModelForCTC.from_pretrained(model_id).eval().to(device)
     if fp16:
         model = model.half()
-    tok = processor.tokenizer
     return LoadedModel(
         model=model,
-        feature_extractor=processor.feature_extractor,
+        feature_extractor=feature_extractor,
         vocab=tok.get_vocab(),
         special_tokens=list(tok.all_special_tokens),
         blank_id=int(tok.pad_token_id),

@@ -20,6 +20,31 @@ logger = logging.getLogger(__name__)
 _NEAR = 0.05  # near-threshold log window
 _L = WordLabel
 
+# Boundary-bleed correction: for short words (≤ _SHORT_WORD_PHONES expected phonemes),
+# one spurious bleed phoneme from an adjacent word raises d_exp by 1/len(expected).
+# For a 2-phoneme word that is 0.50 which exceeds the default T_OVERRULE of 0.45.
+# We add one indel allowance (1/len) to the overrule threshold only when the extra
+# cost comes from insertions (heard > expected), not from substitutions, so that a
+# genuine mispronunciation with the same number of phonemes is still caught.
+_SHORT_WORD_PHONES = 3  # words with ≤ this many expected phonemes get leniency
+_INDEL_COST = 1.0  # must match compare._align indel weight
+
+
+def _adaptive_overrule(
+    t_overrule: float,
+    n_expected: int,
+    n_heard: int,
+) -> float:
+    """Return length-adjusted overrule threshold to absorb one boundary-bleed phoneme.
+
+    Leniency is only granted when the student's heard phoneme count exceeds the expected
+    count (insertion bleed), not when there are substitutions with the same or fewer
+    heard phonemes.  This keeps genuine mispronunciations detectable on short words.
+    """
+    if n_expected <= _SHORT_WORD_PHONES and n_heard > n_expected:
+        return t_overrule + _INDEL_COST / max(n_expected, 1)
+    return t_overrule
+
 
 def _label(stage3, d_exp, d_hyp, deviations, heard, t_flag, t_overrule):
     if stage3 == _L.CORRECT:
@@ -74,8 +99,14 @@ def arbitrate(
 
         label = stage3
         if exp is not None:
-            label = _label(stage3, exp.distance, d_hyp, exp.deviations, heard, t_flag, t_overrule)
-            threshold = t_overrule if stage3 == _L.CORRECT else t_flag
+            n_exp = len(expected[0]) if expected else 0
+            eff_overrule = (
+                _adaptive_overrule(t_overrule, n_exp, len(heard))
+                if stage3 == _L.CORRECT
+                else t_overrule
+            )
+            label = _label(stage3, exp.distance, d_hyp, exp.deviations, heard, t_flag, eff_overrule)
+            threshold = eff_overrule if stage3 == _L.CORRECT else t_flag
             if abs(exp.distance - threshold) <= _NEAR:
                 logger.info(
                     "near_threshold unit=%d stage3=%s label=%s d_exp=%.3f threshold=%s",
