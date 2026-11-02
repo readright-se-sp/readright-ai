@@ -30,13 +30,13 @@ sys.path.insert(0, str(ROOT / "devtools"))
 from recordings import PASSAGE_NAME_BY_PREFIX as PASSAGE_NAMES  # noqa: E402
 from recordings import passage_for  # noqa: E402
 
+from audio.config import AudioSettings  # noqa: E402
 from audio.passage import PassagePreparer, spoken_form  # noqa: E402
 from audio.phonetics.g2p import G2PError, build_g2p  # noqa: E402
 from audio.phonetics.ipa import INVENTORY  # noqa: E402
 from audio.recognition.audio_io import SAMPLE_RATE, load_wav  # noqa: E402
 from audio.recognition.phoneme_recognizer import Wav2Vec2PhonemeRecognizer  # noqa: E402
 from audio.recognition.vocab import unmapped_tokens  # noqa: E402
-from audio.settings import AudioSettings  # noqa: E402
 
 OUT = ROOT / "devtools" / "out"
 SUMMARY = ROOT / "plans" / "phase-B2-spike.md"
@@ -177,7 +177,7 @@ def run_config(model: str, device: str, fp16: bool, wavs: list[Path], g2p) -> li
     if device == "cuda":
         torch.cuda.reset_peak_memory_stats()
     rec = Wav2Vec2PhonemeRecognizer(
-        model, device, fp16, settings.phoneme_chunk_s, settings.phoneme_context_s
+        model, device, fp16, settings.PHONEME_CHUNK_S, settings.PHONEME_CONTEXT_S
     )
     outside_ids = unmapped_tokens(rec.token_map)
     print(f"   vocab ids with non-English segments: {len(outside_ids)}", flush=True)
@@ -406,7 +406,7 @@ def passage_report(g2p) -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     settings = AudioSettings(_env_file=None)
     rec = Wav2Vec2PhonemeRecognizer(
-        CANDIDATES[1], device, False, settings.phoneme_chunk_s, settings.phoneme_context_s
+        CANDIDATES[1], device, False, settings.PHONEME_CHUNK_S, settings.PHONEME_CONTEXT_S
     )
     rows = []
     for wav in wavs:

@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from audio.config import AudioSettings
 from audio.phonetics import g2p as g2p_module
 from audio.phonetics.g2p import EspeakG2P, G2PError, build_g2p
 from audio.phonetics.ipa import INVENTORY
-from audio.settings import AudioSettings
 
 GOLDEN = Path(__file__).parent / "fixtures" / "g2p_golden.yaml"
 
@@ -101,7 +101,7 @@ def fake_backend(monkeypatch):
 
 def test_build_g2p_forwards_the_setting(fake_backend, tmp_path):
     lib = tmp_path / "libespeak-ng.so"
-    build_g2p(AudioSettings(espeak_library=lib, espeak_language="en-gb", _env_file=None))
+    build_g2p(AudioSettings(ESPEAK_LIBRARY=lib, ESPEAK_LANGUAGE="en-gb", _env_file=None))
     assert fake_backend.calls == [("en-gb", lib)]
 
 
@@ -112,7 +112,7 @@ def test_windows_default_applies_only_when_unset(fake_backend, monkeypatch, tmp_
     monkeypatch.setattr(sys, "platform", "win32")
     build_g2p(AudioSettings(_env_file=None))
     explicit = tmp_path / "explicit.dll"
-    build_g2p(AudioSettings(espeak_library=explicit, _env_file=None))
+    build_g2p(AudioSettings(ESPEAK_LIBRARY=explicit, _env_file=None))
     monkeypatch.setattr(sys, "platform", "linux")
     build_g2p(AudioSettings(_env_file=None))
     assert [c[1] for c in fake_backend.calls] == [default, explicit, None]

@@ -11,7 +11,7 @@ from audio.phonetics.ipa import normalise_segments
 from audio.types import PhoneSeq
 
 if TYPE_CHECKING:
-    from audio.settings import AudioSettings
+    from audio.config import AudioSettings
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class EspeakG2P:
 
 def build_g2p(settings: "AudioSettings") -> EspeakG2P:
     """The only place a G2P is built from settings."""
-    library = settings.espeak_library
+    library = settings.ESPEAK_LIBRARY
     if library is None and sys.platform == "win32" and WINDOWS_ESPEAK_LIBRARY.exists():
         library = WINDOWS_ESPEAK_LIBRARY
         logger.info("using the default espeak-ng library at %s", library)
-    return EspeakG2P(settings.espeak_language, library)
+    return EspeakG2P(settings.ESPEAK_LANGUAGE, library)

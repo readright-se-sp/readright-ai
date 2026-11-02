@@ -17,9 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from audio.config import AudioSettings  # noqa: E402
 from audio.phonetics.ipa import INVENTORY  # noqa: E402
 from audio.recognition.vocab import build_token_map  # noqa: E402
-from audio.settings import AudioSettings  # noqa: E402
 
 OUT = ROOT / "src" / "audio" / "phonetics" / "data" / "feature_distances.json"
 
@@ -32,7 +32,7 @@ def recogniser_symbols() -> set[str]:
     from huggingface_hub import hf_hub_download
 
     vocab = json.loads(
-        Path(hf_hub_download(AudioSettings().phoneme_model, "vocab.json")).read_text("utf-8")
+        Path(hf_hub_download(AudioSettings().PHONEME_MODEL, "vocab.json")).read_text("utf-8")
     )
     token_map = build_token_map(vocab)  # <pad> <s> </s> <unk> | are DEFAULT_SPECIAL
     return {s for seq in token_map.values() for s in seq}

@@ -8,7 +8,7 @@ Current state: Phases B0 to B2. The project scaffold, the shared, validated type
 
 ```
 audio/
-├── src/audio/        # package: settings.py, types.py, passage.py, errors.py, phonetics/, recognition/
+├── src/audio/        # package: config.py (settings), types.py, passage.py, errors.py, phonetics/, recognition/
 ├── devtools/         # phoneme_spike.py (output in devtools/out/, git-ignored)
 ├── tests/            # pytest; fixtures in tests/fixtures/
 ├── data/             # local recordings (git-ignored, never commit)

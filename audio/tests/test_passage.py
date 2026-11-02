@@ -3,12 +3,11 @@ import time
 
 import pytest
 
+from audio.alignment.text import guess_proper_nouns, tokenize_passage
 from audio.passage import (
     PassagePreparationError,
     PassagePreparer,
-    interim_key,
-    spoken_form,
-    tokenise,
+    passage_words,
 )
 from audio.phonetics.g2p import G2PError
 from audio.phonetics.ipa import INVENTORY
@@ -18,9 +17,16 @@ from tests.conftest import PASSAGE_NAMES, FakeG2P, load_passage
 logger = logging.getLogger(__name__)
 
 
-def test_tokenise_drops_punctuation_only_tokens():
-    assert tokenise("Ring, ring! — it is ... a - cat") == ["Ring,", "ring!", "it", "is", "a", "cat"]
-    assert tokenise("5 pesos") == ["5", "pesos"]
+def test_passage_words_follow_lane_a_normalisation():
+    words = passage_words("Ring, ring! — it is ... a - cat. Ice-cream for 21? Don't")
+    assert [k for _, k, _ in words] == [
+        "ring", "ring", "it", "is", "a", "cat", "ice", "cream", "for", "twenty", "one", "dont",
+    ]  # fmt: skip
+    # raw token shared by the parts of one token; G2P input keeps apostrophes
+    assert [r for r, k, _ in words if k in ("ice", "cream")] == ["Ice-cream", "Ice-cream"]
+    assert [sp for _, k, sp in words if k in ("twenty", "one", "dont")] == [
+        "twenty", "one", "don't",
+    ]  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -28,14 +34,22 @@ def test_tokenise_drops_punctuation_only_tokens():
     [
         ("Don't", "don't", "dont"),
         ("Nick's,", "nick's", "nicks"),
-        ("ice-cream.", "ice-cream", "icecream"),
         ("“Hello!”", "hello", "hello"),
         ("it’s", "it's", "its"),
+        ("5", "five", "five"),
     ],
 )
-def test_spoken_form_and_interim_key(raw, spoken, key):
-    assert spoken_form(raw) == spoken
-    assert interim_key(raw) == key
+def test_spoken_form_and_key(raw, spoken, key):
+    ((_, got_key, got_spoken),) = passage_words(raw)
+    assert (got_spoken, got_key) == (spoken, key)
+
+
+@pytest.mark.parametrize("name", PASSAGE_NAMES)
+def test_prepare_matches_lane_a_tokenizer(name):
+    """Token positions and keys equal Lane A's passage indices, for all 7 real passages."""
+    content = load_passage(name)
+    prepared = PassagePreparer(FakeG2P()).prepare(content)
+    assert [t.key for t in prepared.tokens] == tokenize_passage(content)
 
 
 def test_token_indexes_are_consecutive():
@@ -170,8 +184,8 @@ def test_inline_edge_cases_prepare(espeak_g2p):
     text = "I read 5 books. Don't live in an ice-cream shop — it's Nick's, isn't it? We live well."
     prepared = PassagePreparer(espeak_g2p).prepare(text)
     keys = {t.key for t in prepared.tokens}
-    assert {"5", "dont", "icecream", "its", "nicks", "isnt"} <= keys
-    assert len(prepared.tokens) == 17  # the dash is dropped
+    assert {"five", "dont", "ice", "cream", "its", "nicks", "isnt"} <= keys
+    assert len(prepared.tokens) == 18  # the dash is dropped; ice-cream is two positions
     assert len(prepared.pronunciations["read"]) >= 2
     assert len(prepared.pronunciations["live"]) >= 2
     for seqs in prepared.pronunciations.values():
@@ -197,21 +211,6 @@ def test_passages_start_with_the_recording_prefix():
 
 ENGLISH_NAMES = {"jacky", "kris", "lisa", "mike", "nick", "marian", "mama", "mom", "saturday"}
 ENGLISH_NAMES |= {"cheese", "i"}
-_OPENING_QUOTES = ("“", '"')
-
-
-def _mid_sentence_capitals(raws: list[str]) -> list[str]:
-    """Spoken forms of capitalised tokens that are not at a sentence start."""
-    found = []
-    for i, raw in enumerate(raws):
-        if i == 0 or raw.startswith(_OPENING_QUOTES):
-            continue
-        if raws[i - 1].rstrip("”’\"'").endswith((".", "!", "?")):
-            continue
-        letters = raw.lstrip("".join(_OPENING_QUOTES) + "‘'")
-        if letters[:1].isupper():
-            found.append(spoken_form(raw))
-    return found
 
 
 @pytest.mark.espeak
@@ -226,14 +225,9 @@ def test_real_passages_cover_every_word_and_name(espeak_g2p):
             assert seqs, (name, key)
             for seq in seqs:
                 assert set(seq) <= INVENTORY, (name, key, seq)
-        for form in _mid_sentence_capitals(tokenise(content)):
-            base = form[:-2] if form.endswith("'s") else form
+        for form in guess_proper_nouns(content):
+            base = form[:-1] if form.endswith("s") else form  # possessive: 'juanings'
             if form not in lexicon and base not in lexicon:
                 anglicised.add(form)
     unknown = anglicised - ENGLISH_NAMES
     assert not unknown, f"capitalised words that espeak would anglicise: {sorted(unknown)}"
-
-
-def test_mid_sentence_capital_detector():
-    raws = tokenise("The cat. “This is Juaning’s fish,” said Kris. Then, Mike went to Cebu!")
-    assert _mid_sentence_capitals(raws) == ["juaning's", "kris", "mike", "cebu"]

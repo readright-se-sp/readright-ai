@@ -30,13 +30,14 @@ sys.path.insert(0, str(ROOT / "devtools"))
 
 from recordings import passage_for  # noqa: E402
 
+from audio.alignment.text import normalize  # noqa: E402
 from audio.arbitration.arbiter import arbitrate  # noqa: E402
+from audio.config import AudioSettings  # noqa: E402
 from audio.lane_b.compare import hypothesis_variants  # noqa: E402
 from audio.lane_b.join import join  # noqa: E402
-from audio.passage import PassagePreparer, interim_key, spoken_form  # noqa: E402
+from audio.passage import PassagePreparer, spoken_form  # noqa: E402
 from audio.phonetics.g2p import build_g2p  # noqa: E402
 from audio.recognition.phoneme_recognizer import Wav2Vec2PhonemeRecognizer  # noqa: E402
-from audio.settings import AudioSettings  # noqa: E402
 from audio.types import (  # noqa: E402
     AlignOp,
     AsrWord,
@@ -71,10 +72,15 @@ def _load_asr_words(wav: Path, asr_engine: str = "crisperwhisper") -> tuple[list
     return [], "none"
 
 
+def _key(text: str) -> str:
+    """Lane A's normalised form of an ASR word (several words joined)."""
+    return "".join(normalize(text))
+
+
 def _build_lane_a(passage: PreparedPassage, whisper_words: list[dict]) -> LaneAResult:
     """Synthesise a LaneAResult from Whisper words aligned to passage tokens.
 
-    Strategy: simple greedy left-to-right alignment on spoken_form / interim_key.
+    Strategy: simple greedy left-to-right alignment on spoken_form / _key.
     Words that match a passage token get CORRECT; extra words become INSERTION;
     skipped tokens become OMISSION. All timings come from Whisper.
     """
@@ -97,7 +103,7 @@ def _build_lane_a(passage: PreparedPassage, whisper_words: list[dict]) -> LaneAR
                 1
                 if (
                     asr_forms[i - 1] == passage_keys[j - 1]
-                    or interim_key(whisper_words[i - 1]["text"]) == passage_keys[j - 1]
+                    or _key(whisper_words[i - 1]["text"]) == passage_keys[j - 1]
                 )
                 else -1
             )
@@ -112,7 +118,7 @@ def _build_lane_a(passage: PreparedPassage, whisper_words: list[dict]) -> LaneAR
                 1
                 if (
                     asr_forms[i - 1] == passage_keys[j - 1]
-                    or interim_key(whisper_words[i - 1]["text"]) == passage_keys[j - 1]
+                    or _key(whisper_words[i - 1]["text"]) == passage_keys[j - 1]
                 )
                 else -1
             )
@@ -193,7 +199,7 @@ def _build_lane_a(passage: PreparedPassage, whisper_words: list[dict]) -> LaneAR
             units.append(
                 Unit(
                     surface=w["text"].strip(),
-                    key=interim_key(w["text"]),
+                    key=_key(w["text"]),
                     passage_index=None,
                     passage_span=0,
                     source_indices=(asr_index_map[asr_i],),
@@ -349,9 +355,9 @@ def run_recording(
         lane_a.units,
         phoneme_tokens,
         passage,
-        pad_ms=settings.join_pad_ms,
-        coverage_min_ms=settings.coverage_min_ms,
-        coverage_max_gap_ms=settings.coverage_max_gap_ms,
+        pad_ms=settings.JOIN_PAD_MS,
+        coverage_min_ms=settings.COVERAGE_MIN_MS,
+        coverage_max_gap_ms=settings.COVERAGE_MAX_GAP_MS,
     )
 
     # B5: arbitrate (includes B4 compare internally)
@@ -361,8 +367,8 @@ def run_recording(
         passage,
         join_result,
         hyp,
-        t_flag=settings.t_flag,
-        t_overrule=settings.t_overrule,
+        t_flag=settings.T_FLAG,
+        t_overrule=settings.T_OVERRULE,
     )
 
     result = RecordingResult(
@@ -731,20 +737,20 @@ def main() -> None:
         if args.device != "auto"
         else ("cuda" if __import__("torch").cuda.is_available() else "cpu")
     )
-    print(f"Loading phoneme recogniser ({settings.phoneme_model}) on {device}...")
+    print(f"Loading phoneme recogniser ({settings.PHONEME_MODEL}) on {device}...")
     t0 = time.perf_counter()
     recognizer = Wav2Vec2PhonemeRecognizer(
-        settings.phoneme_model,
+        settings.PHONEME_MODEL,
         device,
-        settings.phoneme_fp16,
-        settings.phoneme_chunk_s,
-        settings.phoneme_context_s,
+        settings.PHONEME_FP16,
+        settings.PHONEME_CHUNK_S,
+        settings.PHONEME_CONTEXT_S,
     )
     print(f"Loaded recogniser in {time.perf_counter() - t0:.1f}s")
 
     # --- G2P / preparer ---
     g2p = build_g2p(settings)
-    preparer = PassagePreparer(g2p, cache_size=settings.passage_cache_size)
+    preparer = PassagePreparer(g2p, cache_size=settings.PASSAGE_CACHE_SIZE)
     hyp_preparer = PassagePreparer(g2p, cache_size=0)
 
     # --- teacher labels (optional) ---

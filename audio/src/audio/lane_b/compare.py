@@ -4,7 +4,8 @@ import itertools
 import logging
 from collections.abc import Sequence
 
-from audio.passage import PassagePreparationError, PassagePreparer, interim_key, tokenise
+from audio.alignment.text import normalize
+from audio.passage import PassagePreparationError, PassagePreparer
 from audio.phonetics.accent_table import load_accent_table
 from audio.phonetics.features import feature_distance
 from audio.phonetics.ipa import INVENTORY, VOWELS
@@ -122,6 +123,6 @@ def hypothesis_variants(
         return empty
     out = []
     for unit in units:
-        keys = [interim_key(t) for t in tokenise(unit.surface)]
+        keys = normalize(unit.surface)
         out.append(_concat_product([prepared.pronunciations[k] for k in keys]) if keys else ())
     return tuple(out)

@@ -52,8 +52,8 @@ class FakeG2P:
 @pytest.fixture(scope="session")
 def espeak_g2p():
     """The real espeak G2P, or a skip when espeak-ng cannot be loaded."""
+    from audio.config import AudioSettings
     from audio.phonetics.g2p import build_g2p
-    from audio.settings import AudioSettings
 
     try:
         return build_g2p(AudioSettings())

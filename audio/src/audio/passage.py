@@ -1,7 +1,8 @@
 """Stage 0: passage preparation.
 
-``PassagePreparer.prepare(content)`` tokenises the passage, assigns each token a matching key and
-gives every key its accepted IPA pronunciations (lexicon, else espeak plus variants).
+``PassagePreparer.prepare(content)`` tokenises the passage with Lane A's ``normalize`` (so token
+positions equal Lane A's passage indices), takes each token's normalised word as its key and gives
+every key its accepted IPA pronunciations (lexicon, else espeak plus variants).
 """
 
 import hashlib
@@ -10,6 +11,7 @@ import threading
 import unicodedata
 from collections import OrderedDict
 
+from audio.alignment.text import normalize
 from audio.phonetics.g2p import G2P, G2PError
 from audio.phonetics.lexicon import load_lexicon, load_variants
 from audio.types import PassageToken, PhoneSeq, PreparedPassage
@@ -28,10 +30,22 @@ def _normalise_text(content: str) -> str:
     return _WHITESPACE.sub(" ", unicodedata.normalize("NFC", content)).strip()
 
 
-def tokenise(content: str) -> list[str]:
-    """Split on whitespace; drop tokens with no letter or digit (``—``, ``-``, ``...``)."""
-    text = unicodedata.normalize("NFC", content)
-    return [t for t in text.split() if any(c.isalnum() for c in t)]
+def passage_words(content: str) -> list[tuple[str, str, str]]:
+    """``(raw, key, spoken)`` for each passage position, in Lane A's ``tokenize_passage`` order.
+
+    ``key`` is Lane A's normalised word. ``raw`` is the whitespace token it came from (shared by
+    the parts of ``ice-cream`` or ``21``). ``spoken`` is the G2P input: the raw token's spoken form
+    (``don't``, ``nick's``) when the token is one word, else the normalised word.
+    """
+    out: list[tuple[str, str, str]] = []
+    for raw in content.split():
+        words = normalize(raw)
+        if len(words) == 1:
+            form = spoken_form(raw)
+            out.append((raw, words[0], words[0] if form.isdigit() else form))
+        else:
+            out.extend((raw, w, w) for w in words)
+    return out
 
 
 def spoken_form(raw: str) -> str:
@@ -43,16 +57,6 @@ def spoken_form(raw: str) -> str:
     while end > start and not text[end - 1].isalnum():
         end -= 1
     return text[start:end]
-
-
-def interim_key(raw: str) -> str:
-    """Matching key: ``spoken_form`` without apostrophes and hyphens (``dont``, ``icecream``).
-
-    Interim stand-in for Lane A's Normalise (Rev 2 rules 1, 4 and 7 only). Number words,
-    contractions, possessives and homophones (rules 2, 3, 5, 6, 8) are Lane A's job. This is the
-    only function to replace when the two normalisers are reconciled.
-    """
-    return spoken_form(raw).replace("'", "").replace("-", "")
 
 
 def _possessive_base(form: str, lexicon) -> str | None:
@@ -82,7 +86,7 @@ class PassagePreparer:
                 self._cache.move_to_end(passage_hash)
                 return cached
 
-        prepared = self._build(passage_hash, text)
+        prepared = self._build(passage_hash, content)
 
         if self._cache_size > 0:
             with self._lock:
@@ -92,11 +96,11 @@ class PassagePreparer:
                     self._cache.popitem(last=False)
         return prepared
 
-    def _build(self, passage_hash: str, text: str) -> PreparedPassage:
-        raws = tokenise(text)
+    def _build(self, passage_hash: str, content: str) -> PreparedPassage:
+        words = passage_words(content)
         lexicon, variants = load_lexicon(), load_variants()
 
-        spoken = [spoken_form(r) for r in raws]
+        spoken = [sp for _, _, sp in words]
         unique = list(dict.fromkeys(spoken))
         # Lookup order: lexicon, possessive of a lexicon word, espeak.
         to_phonemize = [
@@ -122,8 +126,7 @@ class PassagePreparer:
 
         tokens: list[PassageToken] = []
         by_key: dict[str, list[PhoneSeq]] = {}
-        for i, (raw, form) in enumerate(zip(raws, spoken, strict=True)):
-            key = interim_key(raw)
+        for i, ((raw, key, _), form) in enumerate(zip(words, spoken, strict=True)):
             tokens.append(PassageToken(index=i, raw=raw, key=key))
             by_key.setdefault(key, []).extend(per_form[form])
 

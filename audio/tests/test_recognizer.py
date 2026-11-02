@@ -137,7 +137,7 @@ def test_real_model_on_synthesised_speech(tmp_path, espeak_g2p):
     cli = _espeak_cli()
     if cli is None:
         pytest.skip("the espeak-ng CLI is not available")
-    from audio.settings import AudioSettings
+    from audio.config import AudioSettings
 
     settings = AudioSettings(_env_file=None)
     sentence = "the cat sat on the mat"
@@ -157,11 +157,11 @@ def test_real_model_on_synthesised_speech(tmp_path, espeak_g2p):
 
     try:
         rec = Wav2Vec2PhonemeRecognizer(
-            settings.phoneme_model,
-            settings.phoneme_device,
-            settings.phoneme_fp16,
-            settings.phoneme_chunk_s,
-            settings.phoneme_context_s,
+            settings.PHONEME_MODEL,
+            settings.PHONEME_DEVICE,
+            settings.PHONEME_FP16,
+            settings.PHONEME_CHUNK_S,
+            settings.PHONEME_CONTEXT_S,
         )
     except OSError as exc:
         pytest.skip(f"model weights are not available: {exc}")
