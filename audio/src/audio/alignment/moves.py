@@ -62,11 +62,11 @@ class MoveAwareAligner:
         self._max_moves = max_moves
         self._max_tries = max_tries
 
-    def align(self, passage: list[str], heard: list[Token]) -> list[Column]:
+    def align(self, passage: list[str], heard: list[Token], names: frozenset[str] = frozenset()) -> list[Column]:
         """Same contract as NW: every passage word + heard token in exactly one column."""
         moved_p: set[int] = set()
         moved_h: set[int] = set()
-        columns = self._align_without(passage, heard, moved_p, moved_h)
+        columns = self._align_without(passage, heard, moved_p, moved_h, names)
         errors = _errors(columns, passage)
         tried: set[tuple[int, int]] = set()
         for _ in range(self._max_tries):
@@ -76,7 +76,7 @@ class MoveAwareAligner:
             if move is None:
                 break
             tried.add(move)
-            candidate = self._align_without(passage, heard, moved_p | {move[0]}, moved_h | {move[1]})
+            candidate = self._align_without(passage, heard, moved_p | {move[0]}, moved_h | {move[1]}, names)
             candidate_errors = _errors(candidate, passage) + 1  # the move itself is one error
             if candidate_errors <= errors:  # tie -> keep: an exact word explained beats two stray pairings
                 moved_p.add(move[0])
@@ -85,10 +85,10 @@ class MoveAwareAligner:
         return self._put_back(columns, heard, moved_p, moved_h)
 
     def _align_without(
-        self, passage: list[str], heard: list[Token], moved_p: set[int], moved_h: set[int]
+        self, passage: list[str], heard: list[Token], moved_p: set[int], moved_h: set[int], names: frozenset[str]
     ) -> list[Column]:
         keep = [i for i in range(len(passage)) if i not in moved_p]
-        columns = self._inner.align([passage[i] for i in keep], [t for t in heard if t.id not in moved_h])
+        columns = self._inner.align([passage[i] for i in keep], [t for t in heard if t.id not in moved_h], names)
         return [Column(c.op, None if c.p is None else keep[c.p], c.h) for c in columns]
 
     def _find_move(

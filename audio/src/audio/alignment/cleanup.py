@@ -92,7 +92,9 @@ class TranscriptCleaner:
         return out
 
     def _split_joined_words(self, pieces: list[_Piece], passage: list[str]) -> list[_Piece]:
-        """CrisperWhisper writes 'Mang Ador' as 'Mangador'. Split back if it's 2+ adjacent passage words."""
+        """CrisperWhisper writes 'Mang Ador' as 'Mangador'. Split back if it's exactly 2+ adjacent passage
+        words; near-joins ('Montenoy's') are the aligner's split move, which knows where the word sits.
+        """
         vocab = frozenset(passage)
         compounds: dict[str, list[str]] = {}
         for n in range(2, self._max_join + 1):

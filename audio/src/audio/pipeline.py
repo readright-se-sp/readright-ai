@@ -7,7 +7,7 @@ from audio.alignment.needleman_wunsch import AlignerProtocol
 from audio.alignment.off_text import OffTextDetector
 from audio.alignment.repeats import RepeatFolder
 from audio.alignment.swaps import SwapDetector
-from audio.alignment.text import normalize, tokenize_passage
+from audio.alignment.text import guess_proper_nouns, normalize, tokenize_passage
 from audio.models import CONTRACT_VERSION, AlignedWord, AudioResult, SpokenWord
 from audio.tagging.moved import MovedWordTagger
 from audio.tagging.post_pass import PostPass
@@ -48,7 +48,7 @@ class WordLane:
     def rows(self, spoken: list[SpokenWord], passage: list[str], proper_nouns: frozenset[str]) -> list[AlignedWord]:
         """[(passage_word, spoken_word, start, end, tag, move_id)] — the Lane A output."""
         cleaned = self._cleaner.clean(spoken, passage)
-        items = self._repeats.fold(self._aligner.align(passage, cleaned.tokens), passage)
+        items = self._repeats.fold(self._aligner.align(passage, cleaned.tokens, proper_nouns), passage)
         items = self._off_text.mark(self._swaps.detect(items, passage))
         rows = self._detector.detect(items, cleaned.side_events, passage, proper_nouns)
         return place_omissions(self._moved.tag(rows))
@@ -89,7 +89,8 @@ class AudioPipeline:
         passage = tokenize_passage(passage_text)
         if not passage:
             raise ValueError("passage has no words")
-        nouns = frozenset(w for name in proper_nouns for w in normalize(name))
+        names = proper_nouns or guess_proper_nouns(passage_text)  # none given: capitalised mid-sentence words
+        nouns = frozenset(w for name in names for w in normalize(name))
         rows = self._lane_a.rows(spoken, passage, nouns)
         if wav_path is not None:
             for reviewer in self._reviewers:

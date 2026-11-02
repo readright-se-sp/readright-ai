@@ -1,4 +1,5 @@
 import re
+from itertools import accumulate
 
 _QUOTES = str.maketrans({"’": "'", "‘": "'", "`": "'"})
 _SPLIT = re.compile(r"[\s\-–—/]+")
@@ -92,6 +93,54 @@ def is_hum(word: str) -> bool:
     return _HUM.fullmatch(word) is not None
 
 
+_SOUND_RULES = [
+    (re.compile(r"ph"), "f"),
+    (re.compile(r"ck|q"), "k"),
+    (re.compile(r"c(?=[eiy])"), "s"),
+    (re.compile(r"c"), "k"),
+    (re.compile(r"x"), "ks"),
+    (re.compile(r"z"), "s"),
+    (re.compile(r"(?:ie|ey|y)$"), "i"),
+    (re.compile(r"y(?=[^aeiou])"), "i"),
+    (re.compile(r"(.)\1+"), r"\1"),
+]
+
+
+def sound_key(word: str) -> str:
+    """Spelling-insensitive key: words that sound the same get the same key.
+
+    'jacky', 'jackie', 'jaky' -> 'jaki'; 'jack' -> 'jak' (a different sound, so a real misreading).
+    """
+    for pattern, repl in _SOUND_RULES:
+        word = pattern.sub(repl, word)
+    return word
+
+
+def is_proper_noun(word: str, names: frozenset[str]) -> bool:
+    """`word` is one of the names, or a name's possessive ("Tinoy's" -> 'tinoys' for name 'tinoy')."""
+    return word in names or (word.endswith("s") and word[:-1] in names)
+
+
+_SENTENCE_END_RAW = re.compile(r"[.!?][\"'”’)\]]*$")
+
+
+def guess_proper_nouns(text: str) -> list[str]:
+    """Names in a passage when none are given: capitalised words that don't start a sentence.
+
+    'But Jacky did not', 'with his father, Mang Ador' -> jacky, mang, ador. Over-guessing ('Mom',
+    'Saturday') is harmless: a name only forgives a same-sounding spelling of it (sound_key).
+    """
+    names: list[str] = []
+    starts_sentence = True
+    for raw in text.split():
+        letters = re.sub(r"[^A-Za-z]", "", raw)
+        starts_sentence = starts_sentence or raw[0] in "\"“‘"  # an opening quote starts a quoted sentence
+        if len(letters) > 1 and letters[0].isupper() and not starts_sentence:
+            names.extend(normalize(raw))
+        starts_sentence = _SENTENCE_END_RAW.search(raw) is not None
+    return names
+
+
 def is_anagram(a: str, b: str) -> bool:
     """Same letters, different order (was/saw, on/no, from/form)."""
     return a != b and len(a) > 1 and sorted(a) == sorted(b)
@@ -112,3 +161,33 @@ def is_letter_transposition(expected: str, heard: str, close_below: float = 0.5)
     if is_anagram(expected, heard):
         return True
     return damerau(expected, heard) < levenshtein(expected, heard) and word_distance(expected, heard) < close_below
+
+
+def cut_like(heard: str, parts: list[str]) -> list[str]:
+    """Cuts `heard` where the boundaries of "".join(parts) fall when the two are lined up letter
+    by letter (edit-distance alignment): 'montenoys' vs mang|tinoys -> ['mon', 'tenoys'].
+    """
+    joined = "".join(parts)
+    n, m = len(joined), len(heard)
+    dist = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        dist[i][0] = i
+    for j in range(m + 1):
+        dist[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            dist[i][j] = min(
+                dist[i - 1][j - 1] + (joined[i - 1] != heard[j - 1]), dist[i - 1][j] + 1, dist[i][j - 1] + 1
+            )
+    at = [0] * (n + 1)  # at[i] = heard letters lined up with joined[:i]
+    i, j = n, m
+    while i > 0:
+        at[i] = j
+        if j > 0 and dist[i][j] == dist[i - 1][j - 1] + (joined[i - 1] != heard[j - 1]):
+            i, j = i - 1, j - 1
+        elif dist[i][j] == dist[i - 1][j] + 1:
+            i -= 1
+        else:
+            j -= 1
+    cuts = [0, *(at[b] for b in accumulate(len(p) for p in parts[:-1])), m]
+    return [heard[a:b] for a, b in zip(cuts, cuts[1:])]

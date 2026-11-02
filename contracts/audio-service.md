@@ -12,7 +12,7 @@ What the server sends the audio service, what comes back, and what every tag mea
 |---|---|---|
 | `wav_path` | string | Path on the shared volume. 16 kHz mono WAV, already extracted by the server. |
 | `passage_text` | string | The passage exactly as shown to the student. Punctuation and case are fine; the service normalizes them. |
-| `proper_nouns` | string[] | Optional. Names in the passage (`"Mang Ador"`, `"Aling Tita"`). Any reading of these words counts as a match. |
+| `proper_nouns` | string[] | Optional. Names in the passage (`"Mang Ador"`, `"Aling Tita"`). If none are given, they're guessed from the passage: capitalised words that don't start a sentence or a quote. A name, including its possessive (`"Tinoy"` covers "Tinoy's"), only forgives a **same-sounding spelling** ("Jackie" for "Jacky"), because the ASR doesn't know names. A real misreading of a name counts like any other word (Phil-IRI has no name exception): "Jack" for "Jacky" is a mispronunciation, "Bob" a substitution. The aligner also pairs a heard word with a name more readily, so a misread name is one misreading, not an omission plus an insertion. |
 
 An empty `passage_text` is an error.
 
@@ -101,7 +101,7 @@ Both the passage and the transcript are normalized before alignment, so these ne
 - hyphens and slashes, which split words;
 - digits, which are spelled out (`3` → `three`);
 - a passage word split by the ASR (`pan de sal` → `pandesal`), which is rejoined;
-- adjacent passage words joined by the ASR (`Mangador` → `mang ador`), which are split back, with the time divided by letter count.
+- adjacent passage words joined by the ASR (`Mangador` → `mang ador`), which are split back, with the time divided by letter count. Near-misses are handled in the alignment, which knows where each word sits. **Split:** one heard word can read 2–3 neighbouring passage words (`Montenoy's` for "Mang Tinoy's"). It's cut where its letters line up with the word boundaries (`mon` + `tenoys`), so each passage word gets its own piece of audio. **Merge:** 2–3 heard pieces can read one passage word (`Jo ang` for "Juaning's", also compared without the possessive "s"). That gives one row, timed from the first piece to the last. Both happen only when the joined form is close and closer than any single word, and only for the words at that spot.
 
 The service needs CrisperWhisper's **verbatim** ("as spoken") output. The cleaned-up ("as meant") text has no fillers, cut-offs or repeats, so those miscues would be lost.
 
