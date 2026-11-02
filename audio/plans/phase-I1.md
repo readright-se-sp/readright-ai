@@ -1,6 +1,6 @@
 # Phase I1: Integrate Lane B into Lane A (on `dev`)
 
-Status: approved (user, 2026-11-02), with the recommended answer for every open question below (Q1–Q7; Q7 approved separately). Ready for implementation in a separate session, starting at Step 0.
+Status: implemented 2026-11-02 on `feature/lane-b-integration` (not pushed, no PR). Step 6 results are in "Results" below.
 
 ## Why this phase, and what it replaces
 
@@ -127,6 +127,81 @@ Note that the recogniser now runs **after** ASR, not in parallel as the roadmap'
   - For a name that **is** in the lexicon, arbitrate normally.
   - For a name that is **not** in the lexicon, never overrule CORRECT → MISPRONUNCIATION; log it instead (`phonetic_check=unverifiable`, reason `name_not_in_lexicon`).
   - Pass the request's name set into the reviewer for this check.
+
+## ASR model and GPU (added 2026-11-02, user requirement)
+
+Testing uses **CrisperWhisper 2.0 large on the GPU**, and so does the integrated pipeline by default. Lane A's code already does this:
+- `config.py` defaults: `ASR_MODEL = "models/crisper2_large_ct2"` (a CTranslate2 conversion of `nyralabs/CrisperWhisper2.0_large`), `ASR_DEVICE = "cuda"`, `ASR_COMPUTE_TYPE = "float16"`.
+- It loads through whisperx in verbatim mode, with wav2vec2 word alignment.
+
+Lane B's `devtools/transcribe_crisperwhisper.py` loads the same model through the `transformers` pipeline instead. That path gives different word timings from production.
+
+Where this applies in the steps:
+- **Step 1 (dependencies).** `whisperx` and CTranslate2 must resolve with CUDA on the cu126 torch index (Q1). The resolved env must give `torch.cuda.is_available() == True`, and `ctranslate2.get_cuda_device_count() >= 1`.
+- **Before Step 6 (model files).** `audio/models/crisper2_large_ct2/` is git-ignored (about 1.5 GB) and its conversion isn't documented on dev.
+  - Convert it with `ct2-transformers-converter --model nyralabs/CrisperWhisper2.0_large --output_dir audio/models/crisper2_large_ct2 --copy_files tokenizer.json preprocessor_config.json --quantization float16`.
+  - Document the command in `audio/README.md`.
+  - If the converter doesn't keep the `[verbatim_N]` tokens, `load()` raises "not a CrisperWhisper 2.0 model". In that case, stop and ask the Lane A developer how they produced the model.
+- **Step 5 (wiring).** CrisperWhisper, whisperx's alignment model and Lane B's xlsr-53 recogniser all load once at startup on `cuda`.
+- **Step 6 (end-to-end check).** Run the real `AudioPipeline.run(wav_path, ...)` with CrisperWhisper large on the GPU, not saved transcripts and not the `transformers` devtool path.
+  - Record peak VRAM with all three models loaded.
+  - The dev machine has a GTX 1660 Ti with 6 GB. If it runs out of memory, or CTranslate2 float16 gives empty or garbled output there (Lane B's wav2vec2 already gives NaN in fp16 on this card), try `ASR_COMPUTE_TYPE=int8_float16` once and record that.
+  - Never fall back to CPU or a smaller model without telling the user. Stop and report.
+  - The A10G numbers come later, in deployment benchmarking.
+- **Tests.** The slow full-pipeline test is marked GPU and skipped when CUDA or the CT2 model directory is missing. The fast suite never loads CrisperWhisper; it uses `AudioPipeline.analyze` with saved transcripts, as Lane A's tests do.
+- **Devtools.** Switch `run_lane_b.py` (or the new `run_pipeline.py`) to Lane A's `CrisperWhisperTranscriber`. Keep `transcribe_crisperwhisper.py` only as a reference for the `transformers` backend, which the deployment doc wants compared later. Note that in its docstring.
+
+## Results (Step 6, 2026-11-02)
+
+Run: `devtools/run_pipeline.py` (real `AudioPipeline.run`, CrisperWhisper 2.0 large through Lane A's whisperx transcriber, CTranslate2 float16 on CUDA, plus Lane B's xlsr-53 fp32) on the 9 recordings in `audio/data/`. GTX 1660 Ti, 6 GB. Thresholds and pads at the settings defaults (`JOIN_PAD_MS` 50, `T_FLAG` 0.25, `T_OVERRULE` 0.45). No CPU or smaller-model fallback, no OOM, so `int8_float16` was not tried. The converted model kept the `[verbatim_N]` tokens (`load()` accepted it).
+
+Dependencies: `torch 2.8.0+cu126` with `whisperx 3.8.6` resolved together (Q1 did not block). `torch.cuda.is_available()` is True and `ctranslate2 4.8.4` sees 1 CUDA device.
+
+### Label changes (735 rows, 112 changed, Lane A tag to final tag)
+
+| Change | Rows |
+|---|---|
+| match to mispronunciation | 88 |
+| mispronunciation to match | 8 |
+| mispronunciation to substitution | 7 |
+| substitution to match | 5 |
+| substitution to mispronunciation | 4 |
+| anything involving omission, insertion | 0 |
+
+Counted errors per recording went from 4, 14, 3, 3, 9, 3, 3, 10, 11 (Lane A alone) to 18, 20, 8, 14, 15, 7, 17, 15, 21.
+
+**Main finding: 88 of the 112 changes are false overrules, caused by the join window.** The 88 match-to-mispronunciation rows are almost all short words with only their last phoneme joined (`it` heard `/t/`, `up` `/p/`, `at` `/t/`). The word windows from CrisperWhisper through whisperx are much tighter than the transformers timestamps `JOIN_PAD_MS=50` was set on (about 40 ms for "a"). Diagnostic only, defaults untouched: on `amouseanda...` the match-to-mispronunciation count goes from 16 at pad 50 to 4 at pad 150, and stays 4 at pad 300. This is the first thing B6 must settle (pad, and maybe a different window rule). Until then Lane B on whisperx timings makes scores worse, so `AUDIO_PHONETIC_ENABLED=false` is the safe setting if this is deployed before B6.
+
+### Hand-checked changes (excluding the 88 window overrules)
+
+| Passage word, heard | Change | Evidence | Verdict |
+|---|---|---|---|
+| cheese, "geez" | sub to match | /tʃ i s/ vs /tʃ i z/, d_exp 0.03 | right: the ASR misspelt it, the sound is right |
+| mang, "mon" | sub to match | heard /m a ŋ/ exactly | right |
+| tinoys, "tenoys" | mispron to match | /t i n o ɪ s/, d_exp 0.09 | right (lexicon name) |
+| two, "to" | mispron to match | homophone | right |
+| kris, "chris" | mispron to match | d_exp 0.0 to 0.10 | right |
+| seafood, "food" | mispron to sub | /f u d/, d_hyp 0 | right (the child said another word) |
+| taho, "tofu" | sub to mispron | /d aʊ/, near neither | plausible |
+| buys, "buy"; say, "says"; sill, "still" | mispron to sub | d_hyp 0 | wrong or debatable: Lane A's letter rule called these ending/close-spelling mispronunciations (Phil-IRI counts both, so the score is the same, the label differs) |
+| jacky, "jack" | mispron to match | /dʒ æ k/ vs /dʒ æ k i/, d_exp 0.25 (equal to `T_FLAG`) | wrong: a dropped syllable is forgiven by `<=` |
+| cups, "cops" | mispron to match | /ʌ/ vs /ɔ/, d_exp 0.11 | wrong: a different word, the accent table is too generous here |
+| mongo, "mango" | mispron to match | /ʊ/ vs /o/, d_exp 0.09 | wrong: a different word |
+
+For B6: window rule first, then the near-equal vowel pairs and the "final syllable dropped" case (the `<=` at `T_FLAG`).
+
+### Timing and memory (this GPU, sequential, 32 to 67 s recordings)
+
+| | Range | Notes |
+|---|---|---|
+| ASR (whisperx + CrisperWhisper large) | 14 to 32 s | about 0.4 to 0.7 of the recording length |
+| Phoneme recogniser | 0.7 to 2.3 s | 2 to 7% of the request |
+| Lane B total (join, compare, arbitrate included) | 0.7 to 2.3 s | the rest is under 0.05 s |
+| Whole request after the WAV exists | 15 to 34 s | |
+| Model load | ASR 7 s, recogniser 4 s (warm cache) | |
+| GPU memory | 3.3 GB ASR model alone, 5.7 GB with all three models loaded, 6.1 GB peak | the card is full (6.1 of 6.1 GB). It ran without OOM, but there is no headroom for batch size above 8 or a second request |
+
+Q5: the recogniser is a few percent of the time, so running it in parallel would save at most 2 s. ASR is the cost (about 50% of the 115 s budget for a 2-minute reading on this card by linear extrapolation); that is a deployment-benchmark question for the A10G, not a Lane B one. No parallel-recogniser follow-up is needed.
 
 ## Notes from `fix/audio-retry-next-word` (already in `dev`, no separate merge needed)
 

@@ -131,6 +131,10 @@ The audio path is settled except for the model size and backend; the video path 
 
 ### Audio path (CrisperWhisper)
 
+The audio worker runs two GPU models, both loaded once at startup: CrisperWhisper 2.0 large (CTranslate2 float16, through whisperx with wav2vec2 word alignment) and the Lane B phoneme recogniser (`facebook/wav2vec2-xlsr-53-espeak-cv-ft`, about 0.3B parameters, fp32). The recogniser runs after ASR on the whole recording and re-judges each word by sound (Phase I1). If it fails or runs out of time, the request returns Lane A's labels (log `phonetic_check=skipped`); `AUDIO_PHONETIC_ENABLED=false` turns it off. `espeak-ng` is a system dependency of the image, and ffmpeg must be on `PATH` for whisperx.
+
+First measurement (Phase I1, GTX 1660 Ti 6 GB, one request at a time, recordings of 32 to 67 s): ASR 14 to 32 s, recogniser 0.7 to 2.3 s, whole audio analysis 15 to 34 s; GPU memory 3.3 GB for ASR alone, 5.7 GB with both models loaded, 6.1 GB peak (the card is full). This is not the A10G benchmark: the numbers above replace nothing in the time budget yet, but they show the recogniser adds only a few percent, so the budget question is the ASR model and batching.
+
 - **Model.** CrisperWhisper 2.0 comes in `small` (about 0.2B parameters), `medium` and `turbo` (about 0.8B each) and `large` (about 2B). Weights are 0.5-3 GB in fp16, so all of them fit easily in 24 GB; the limit is throughput, not memory.
 - **Starting point.** `large` in fp16 for accuracy, with `turbo` or `medium` as the faster fallback. Choose by benchmark on real student recordings.
 - **Backend.** The `transformers` backend gives the most accurate word timestamps. The CTranslate2 (`faster-whisper`) backend is faster and lighter, but its model card says timestamp accuracy is not guaranteed. Since mini audio clips are cut from those timestamps, compare both before choosing.

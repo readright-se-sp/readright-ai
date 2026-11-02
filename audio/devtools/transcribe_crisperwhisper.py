@@ -1,6 +1,10 @@
 """Transcribe all recordings in audio/data/ with nyralabs/CrisperWhisper2.0_large on GPU.
 
 Caches word-level timestamps in devtools/out/crisperwhisper/<stem>.json.
+
+Reference only: this is the `transformers` backend, whose word timings differ from production
+(Lane A's CTranslate2 + whisperx transcriber, used by devtools/run_pipeline.py). Kept for the
+backend comparison the deployment doc asks for.
 """
 
 import gc

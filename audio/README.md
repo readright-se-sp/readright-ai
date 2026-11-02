@@ -2,14 +2,15 @@
 
 The audio lane of the ReadRight MAI. It implements the GO2 pipeline behind the worker contract in [../contracts/worker-api.md](../contracts/worker-api.md). Lane A (word lane, post-pass) and Lane B (phonetic lane, arbitration) are built by different developers; see [ROADMAP.md](ROADMAP.md).
 
-Current state: Phases B0 to B2. The project scaffold, the shared, validated types (`src/audio/types.py`), Stage 0 passage preparation (`PassagePreparer` in `src/audio/passage.py`, IPA via espeak-ng in `src/audio/phonetics/`) and the whole-recording phoneme recogniser (`Wav2Vec2PhonemeRecognizer` in `src/audio/recognition/`) exist. There is no API yet.
+Current state: Lane A (CrisperWhisper word lane, post-pass, scoring) and Lane B (phoneme recogniser, join, compare, arbitration) are integrated in one pipeline (Phase I1): `AudioPipeline` in `src/audio/pipeline.py`, composed in `src/audio/wiring.py`. Lane B plugs in as `PhoneticReviewer` (`src/audio/lane_b/reviewer.py`) and adds an optional `phonetic` object to each row it judged (contract v5, [../contracts/audio-service.md](../contracts/audio-service.md)). `AUDIO_PHONETIC_ENABLED=false` runs Lane A alone. There is no HTTP layer yet (Phase I2). Calibration of Lane B on the integrated pipeline is B6; until then the Phase I1 results show it over-flags short words (see [plans/phase-I1.md](plans/phase-I1.md), "Results").
 
 ## Layout
 
 ```
 audio/
-├── src/audio/        # package: config.py (settings), types.py, passage.py, errors.py, phonetics/, recognition/
-├── devtools/         # phoneme_spike.py (output in devtools/out/, git-ignored)
+├── src/audio/        # package: pipeline.py, wiring.py, models.py, config.py (settings), alignment/, tagging/, transcription/ (Lane A); types.py, passage.py, phonetics/, recognition/, lane_b/, arbitration/ (Lane B)
+├── models/           # converted CrisperWhisper (git-ignored)
+├── devtools/         # run_pipeline.py (full pipeline on data/), run_lane_b.py, phoneme_spike.py (output in devtools/out/, git-ignored)
 ├── tests/            # pytest; fixtures in tests/fixtures/
 ├── data/             # local recordings (git-ignored, never commit)
 └── pyproject.toml
@@ -36,6 +37,16 @@ Tests marked `model` need the model weights (downloaded on first use) and tests 
 - Model weights download on first use to the Hugging Face cache (`HF_HOME`, default `~/.cache/huggingface`). Each candidate is about 1.3 GB. Set `HF_HOME` to relocate it. Baking the weights into the Docker image is B7.
 - The default model is `facebook/wav2vec2-xlsr-53-espeak-cv-ft` in fp32 (`AUDIO_PHONEME_MODEL`, `AUDIO_PHONEME_FP16`); see [plans/phase-B2-spike.md](plans/phase-B2-spike.md).
 - Spike: put the recordings in `data/`, then `uv run python devtools/phoneme_spike.py` (downloads Whisper small.en and both models, about 5 GB; takes about 15 minutes on a GTX 1660 Ti). Use `--summary-only` to rebuild `plans/phase-B2-spike.md` from `devtools/out/results.csv`.
+
+### ASR model (CrisperWhisper 2.0 large, CTranslate2)
+
+Lane A loads `AUDIO_ASR_MODEL` (default `models/crisper2_large_ct2`, relative to `audio/`) through whisperx on CUDA in float16. The folder is git-ignored (about 3 GB for float16) and is made once with the CTranslate2 converter (from `audio/`, after `uv sync --extra dev`):
+
+```
+uv run ct2-transformers-converter --model nyralabs/CrisperWhisper2.0_large --output_dir models/crisper2_large_ct2 --copy_files tokenizer.json preprocessor_config.json --quantization float16
+```
+
+`load()` raises "not a CrisperWhisper 2.0 model" if the `[verbatim_N]` tokens are missing. Whisperx also needs an `ffmpeg` binary on `PATH` to read WAVs. On the 6 GB GTX 1660 Ti, ASR (3.3 GB) plus the phoneme model fills the card (6.1 GB peak); `AUDIO_ASR_COMPUTE_TYPE=int8_float16` is the fallback if it runs out of memory. `uv run python devtools/run_pipeline.py` runs everything on the recordings in `data/`. Tests marked `gpu` skip when CUDA or this folder is missing.
 
 ### espeak-ng (system dependency)
 
