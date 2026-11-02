@@ -1,6 +1,6 @@
 # Phase B6a: Join window fix on real ASR timings (no labels needed)
 
-Status: approved (user, 2026-11-02), with the recommended answer for every open question (Q1–Q4). Ready for implementation, starting at Step 0.
+Status: **done** (2026-11-02). Target met after the extension round: held-out FOR 1.91%, coverage 93.39% (see "Results (Step 4b)" and "Results (Step 5)"). Lane B is off by default until B6b.
 
 Branch: `feature/lane-b-integration` (continue on it; I1's commits are already there).
 
@@ -226,3 +226,22 @@ What it shows:
 - The guard now needs to be strict (1.0 means every expected phoneme must be heard before a `match` can be overruled). That's a conservative setting: Lane B can only overrule a word it heard in full.
 - Window rule: `pad150` and `mid150` give identical numbers, `pad100` equals `mid100`, and `pad200` equals `mid200` (held-out FOR 2.40%, 0.5 points worse than 150). `pad` is not better than `midpoint` by more than 0.5 points, so Q1 resolves to removing `pad`.
 - Counted errors are no longer higher than Lane A alone (44 to 41, 16 to 15), but the gain is small. Whether Lane B improves on Lane A needs labels (B6b), so `AUDIO_PHONETIC_ENABLED` defaults to false.
+
+## Results (Step 5, live run and close-out, 2026-11-02)
+
+**Defaults set** (`config.py`): `JOIN_MAX_REACH_MS` 150, `COVERAGE_GUARD_RATIO` 1.0, `SHORT_WORD_MAX_PHONES` 3, `ADAPTIVE_OVERRULE` true, `T_FLAG`/`T_OVERRULE` unchanged (0.25/0.45, B6b). `AUDIO_PHONETIC_ENABLED` now defaults to **false**; `cache_runs.py`, `run_pipeline.py` and `benchmark.py` turn it on. `pad` mode and `JOIN_PAD_MS`/`JOIN_MODE` are removed (Q1); the adaptive overrule stays (Q3). The audio contract is v6 (optional `phonetic.reason`, Q2).
+
+**Live run** (`devtools/run_pipeline.py`, real CrisperWhisper 2.0 through whisperx plus xlsr-53, all 9 recordings, GTX 1660 Ti, nothing else on the GPU):
+- **The replay matches the live run exactly:** 735 rows, 0 differing final tags, 0 differing Lane A tags, 33 rows changed in both.
+- Label changes (Lane A tag to final): match to mispronunciation 10 (6 selection, 4 held-out, as in the sweep), mispronunciation to match 9, substitution to match 5, mispronunciation to substitution 5, substitution to mispronunciation 4. I1 had 88 / 8 / 5 / 7 / 4. `check`: 647 done, 63 unverifiable, 25 not judged (other tags).
+- Counted errors per recording, Lane A alone to final: 4 to 3, 14 to 13, 3 to 3, 3 to 5, 9 to 7, 3 to 3, 3 to 6, 10 to 6, 11 to 10 (total 60 to 56; I1 had 60 to 135). Two recordings still get worse (`everysaturbc0e...` 3 to 5, `mariancamea8fe...` 3 to 6) because of the false overrules that remain.
+- Timing: ASR 14 to 34 s, recogniser 0.7 to 2.5 s, Lane B total 0.7 to 2.5 s, whole request 15.5 to 36.6 s. Peak GPU 6144 MB (the card's limit; same as I1).
+
+**Hand-checked set** (`tests/fixtures/handchecked_i1.yaml`, `tests/test_handchecked_i1.py`, from the cache): 11 rows pass; `jacky` (dropped syllable, `<=` at `T_FLAG`), `cups`/`cops` and `mongo`/`mango` (near-equal vowels) are strict `xfail` with reason B6b. `buys`/`buy` and `say`/`says` now stay `mispronunciation` (the ending rule).
+
+**What remains for B6b** (needs labels):
+- The 4 held-out and 6 selection false overrules are mostly long words with a real divergence, which CrisperWhisper probably normalised (Q4); only labels can tell.
+- Whether Lane B beats Lane A at all against teacher labels: 56 vs 60 counted errors only says it no longer inflates the count.
+- `T_FLAG`/`T_OVERRULE`, the near-equal vowel accent pairs and the `<=` at `T_FLAG`.
+- The guard at 1.0 is conservative: Lane B overrules `match` only when it heard every expected phoneme. B6b should re-tune it with labels.
+- Turn `AUDIO_PHONETIC_ENABLED` on only after that.
