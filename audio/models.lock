@@ -1,0 +1,7 @@
+# Models baked into the image by devtools/fetch_models.py. One per line: name kind source revision
+# kind hf: Hugging Face repo, revision = commit hash (never a branch name).
+# kind torchaudio: a torchaudio pipeline bundle that whisperx downloads to the torch hub cache;
+#   the bundle's checkpoint URL carries its own content hash, so there is no revision.
+crisperwhisper hf nyralabs/CrisperWhisper2.0_large f4334f6e8193f2691212d49b20fa12d370e13896
+phoneme hf facebook/wav2vec2-xlsr-53-espeak-cv-ft 2c733782da5604684829819a5eb744c193fe9398
+align torchaudio WAV2VEC2_ASR_BASE_960H -
