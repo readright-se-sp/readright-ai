@@ -16,9 +16,9 @@ from devtool_helpers import (
     patch_video_io,
     sample_features,
 )
-from devtools.feature_cache import load_cache
 
 from devtools import extract_features
+from devtools.feature_cache import load_cache
 
 EXPECTED_KEYS = {
     "version",

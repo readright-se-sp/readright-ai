@@ -120,17 +120,19 @@ Devtools (outside the image, local use) to tune the thresholds on labeled record
    ```
 
    It prints TP/FP/TN/FN, precision, recall and F1 per flag and value (`-` when undefined), the files missing from the cache or unlabeled, and the recommended value per setting with the misclassified files. Exit codes: 0 on success, 2 for bad labels, an invalid `--grid` value or no file in both labels and cache. Unreadable cache files are listed and skipped; `use_pose` is skipped when the cache has no pose data.
-4. Pick the value with precision >= 0.9 and the best recall, then update the defaults in `app/config.py`, `.env.example` and the table above.
+4. Pick the value with precision >= 0.9 and the best recall, then update the defaults in `app/config.py`, `.env.example` and the table above (a rebuild bakes them into the image; `scripts/start-stack.sh` rebuilds). To try a value on the instance without a code change, set it in the root `.env`: compose passes `MAI_VIDEO_LOG_LEVEL`, `MAX_CONCURRENT_JOBS`, `SAMPLE_FPS`, `USE_POSE`, `EXPRESSION_MIN_RANGE`, `EXPRESSION_GROUP_MIN_RANGE`, `POINTING_MIN_TOTAL_MS`, `POINTING_EXTENDED_MAX_BEND_DEG` and `SWEEP_MIN_COUNT` through to the container when set (see the root `.env.example`).
 5. Inspect one clip frame by frame (CSV on stdout, the decision as JSON on stderr; `--overlay out.mp4` draws landmarks, for consented clips only, local only, never shared):
 
    ```
    uv run python -m devtools.inspect_video <webm> [--pose] [--overlay out.mp4]
    ```
 
-6. Load test a running lane (the files must already be on its scratch volume):
+6. Load test a running lane (the files must already be on its scratch volume). In compose the lane publishes no port, so from the repo root start the stack with the load-test overlay (video worker on `127.0.0.1:8002` only) and copy the clips through the api container, which mounts the volume read-write:
 
    ```
-   uv run python -m devtools.load_test <url> <webm_path_on_lane>... [-n 10] [--deadline 115]
+   docker compose -f compose.yaml -f compose.loadtest.yaml up -d --build
+   docker compose cp clip.webm api:/scratch/clip.webm
+   cd video && uv run python -m devtools.load_test http://127.0.0.1:8002 /scratch/clip.webm [-n 10] [--deadline 115]
    ```
 
    It prints p50/p95/max job time for successful jobs, the count of other statuses, and `/stats`. Transport errors count under status 0. Exit code 1 if any job failed or none succeeded, else 0.
