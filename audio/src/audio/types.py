@@ -195,13 +195,13 @@ class LaneAResult(_Model):
         bad = [label for label in self.labels if label not in STAGE3_LABELS]
         if bad:
             raise ValueError(f"labels outside STAGE3_LABELS: {sorted(b.value for b in bad)}")
-        last = -1
+        next_free = 0  # first passage token not yet claimed by an earlier unit
         for unit in self.units:
             if unit.passage_index is None:
                 continue
-            if unit.passage_index < last:
-                raise ValueError("units must be in passage order")
-            last = unit.passage_index
+            if unit.passage_index < next_free:
+                raise ValueError("units must be in passage order and must not overlap")
+            next_free = unit.passage_index + unit.passage_span
         return self
 
 

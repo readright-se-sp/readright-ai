@@ -15,7 +15,7 @@ This file covers Lane B and the interim shared pieces. Lane A adds its own phase
 | # | Phase | Status |
 |---|---|---|
 | B0 | Project setup and shared types (interim) | Done: [plans/phase-B0.md](plans/phase-B0.md) |
-| B1 | Stage 0 passage preparation (espeak-ng IPA) | Not started |
+| B1 | Stage 0 passage preparation (espeak-ng IPA) | Done: [plans/phase-B1.md](plans/phase-B1.md) |
 | B2 | Phoneme recogniser spike and implementation | Not started |
 | B3 | Join by time and coverage candidates | Not started |
 | B4 | Compare (weighted phoneme distance, accent table) | Not started |
@@ -28,7 +28,7 @@ This file covers Lane B and the interim shared pieces. Lane A adds its own phase
 1. **Before planning**, read: this file, [../CLAUDE.md](../CLAUDE.md), [the worker contract](../contracts/worker-api.md), [the BE contract](../contracts/be-mai-openapi.yaml) (miscue shape), [the deployment doc](../docs/deployment-architecture.md) (GPU, time budget), and the current code in `src/` and `tests/`.
 2. **Draft a plan** in `plans/phase-<id>.md` (planning and implementation run in separate sessions, so the plan file is the hand-off): files to add or change, new settings, new dependencies, behavior, tests, done criteria, and the phase's open questions with a recommended answer for each. Do not resolve an open question silently.
 3. **Wait** for the user's approval of the plan and an explicit go. Never start a phase, or the next one, unprompted.
-4. **Implement**, then run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`.
+4. **Implement** on the single branch `feature/lane-b` (no per-phase branches). Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, then commit with a Conventional Commit message and no Claude trailers. Do not push unless asked.
 5. **Finish**: mark the phase done in the status table above and in the root README's "Current state"; record decisions made during the phase in its section below; update [../README.md](../README.md) and [../docs/deployment-architecture.md](../docs/deployment-architecture.md) if behavior changed.
 
 ## Pipeline and the Lane A / Lane B boundary
@@ -236,3 +236,4 @@ INSERTION passes through unchanged to the post-pass.
 - Lane B owns Stage 0 passage preparation (user, 2026-11-02).
 - Phonemes in the worker and BE contracts are IPA segments from espeak-ng conventions, after `ipa.py` normalisation.
 - B0 (2026-11-02): shared types are frozen pydantic v2 models (`extra="forbid"`, tuples), not dataclasses. `Unit.passage_index` was added to the Rev 2 `Unit` (flag to the Lane A developer at reconciliation). The project uses a `src/audio/` layout and `requires-python = ">=3.11,<3.13"` (torch and transformers wheels lag new Python releases). A single `WordLabel` enum (contract values plus `correct`) is used everywhere; `STAGE3_LABELS` and `ARBITRATION_LABELS` are frozensets. `PreparedPassage.pronunciations` is stored as a read-only `MappingProxyType` and serialised as a dict.
+- B1 (2026-11-02): espeak-ng via `phonemizer`, voice `en-us`, no stress marks; length marks are stripped (tense/lax survives in vowel quality). The lexicon replaces espeak (Filipino form first, anglicised second); `variants.yaml` adds to espeak's output. Heteronyms get both readings. The passage title is not read or scored. G2P input (`spoken_form`) and matching key (`interim_key`) are separate; `interim_key` is an interim stand-in for Lane A's Normalise (Rev 2 rules 1, 4, 7 only) and is the one function to replace at reconciliation. The lexicon lives in code-side YAML (`phonetics/data/`), not in `passages.proper_nouns`. `INVENTORY` is frozen in `ipa.py` (54 segments, including espeak's merged units such as `ɛɹ`, `ɑɹ`, `əl`, `aɪɚ`, and the Tagalog `a o u ɾ`). `LaneAResult` now rejects overlapping units. The six test passages are made-up placeholders; the lexicon is unreviewed by a Filipino speaker.

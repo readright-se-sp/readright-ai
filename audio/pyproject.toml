@@ -11,12 +11,13 @@ requires-python = ">=3.11,<3.13"
 dependencies = [
     "pydantic>=2",
     "pydantic-settings",
+    "phonemizer>=3.3",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "pyyaml",
     "ruff",
 ]
 
@@ -25,10 +26,12 @@ path = "src/audio/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/audio"]
+include = ["src/audio/phonetics/data/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = ["espeak: needs the espeak-ng system library (skipped when it is missing)"]
 
 [tool.ruff]
 line-length = 100

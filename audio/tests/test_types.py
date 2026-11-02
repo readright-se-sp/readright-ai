@@ -224,6 +224,15 @@ def test_lane_a_result_rules():
         )
 
 
+def test_lane_a_result_rejects_overlapping_units():
+    _, lane_a = load_fixture("synthetic_cat")
+    data = lane_a.model_dump()
+    units = [dict(u) for u in data["units"]]
+    units[0]["passage_span"] = 2  # unit 0 now covers tokens 0 and 1, which unit 1 also claims
+    with pytest.raises(ValidationError):
+        LaneAResult.model_validate({**data, "units": units})
+
+
 def test_prepared_passage_rules():
     passage, _ = load_fixture("synthetic_cat")
     data = passage.model_dump()

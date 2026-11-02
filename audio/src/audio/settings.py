@@ -8,3 +8,8 @@ class AudioSettings(BaseSettings):
 
     log_level: str = "INFO"
     data_dir: Path = Path("data")  # local recordings (git-ignored), used by devtools later
+    espeak_language: str = "en-us"  # espeak voice
+    # Path to libespeak-ng.dll/.so. When set, it is exported as PHONEMIZER_ESPEAK_LIBRARY
+    # before the espeak backend is created.
+    espeak_library: Path | None = None
+    passage_cache_size: int = 128  # prepared passages kept in memory
