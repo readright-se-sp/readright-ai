@@ -1,4 +1,3 @@
-from app.pointing import assess_pointing
 from pointing_helpers import (
     arm_down_pose,
     hands_in_range,
@@ -10,6 +9,7 @@ from pointing_helpers import (
 from video_helpers import make_settings
 
 from app.frames import SamplePlan
+from app.pointing import assess_pointing
 
 PLAN = SamplePlan(fps=5.0, width=640, height=360, max_frames=900)
 STAT_KEYS = {

@@ -119,7 +119,7 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-2) as Docker Compose 
 |---|---|
 | `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 7 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls, result merging, and cutting and uploading the mini audio files to S3. Admission control returns 429 when the work cannot finish in time, and `/health/ready` is 503 until Redis, both lanes, S3 and ffmpeg are up. A fake worker stands in for the audio lane. |
 | `audio/` | Not started. |
-| `video/` | Worker contract implemented with MediaPipe face and hand landmarks; lack of expression is decided from face blendshapes; finger pointing is decided from hand landmarks (both flags decided, Phase 6 of 7, see [video/ROADMAP.md](video/ROADMAP.md)). Runs in Docker in compose, with MediaPipe on CPU. |
+| `video/` | Worker contract implemented with MediaPipe face and hand landmarks; lack of expression is decided from face blendshapes; finger pointing is decided from hand landmarks (both flags decided; Phase 7 of 7 tooling done, calibration on labeled clips and the load test pending, see [video/ROADMAP.md](video/ROADMAP.md)). Runs in Docker in compose, with MediaPipe on CPU. |
 | Docker Compose | Done (Phase 7): `docker compose up --build` runs Caddy, the server, Redis, the real video lane, a fake audio worker and a moto server for S3. See [server/README.md](server/README.md#run-with-docker-compose). |
 
 ### Run the server locally

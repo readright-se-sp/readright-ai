@@ -12,7 +12,7 @@ The video lane is built in 7 phases. Each phase below says what to build, the in
 | 4 | Packaging and compose | Done |
 | 5 | Lack of expression | Done |
 | 6 | Finger pointing | Done |
-| 7 | Calibration, benchmark and docs | Not started |
+| 7 | Calibration, benchmark and docs | Tooling done, calibration pending |
 
 ## How to work a phase
 
@@ -474,7 +474,15 @@ class JobRunner:
 
 **Done when.** Calibrated defaults are in place with their measured precision/recall in Decisions, the load test fits the budget, and the root docs describe the real video lane.
 
-**Decisions.** (filled in when the phase is done)
+**Decisions.**
+- D1: No labeled clips or g5.2xlarge available, so criterion 7 (calibration, load test, chosen `MAX_CONCURRENT_JOBS`, `SAMPLE_FPS`, `MAI_VIDEO_CPUS`) is deferred; defaults unchanged; status "Tooling done, calibration pending".
+- D2: Shared `devtools/feature_cache.py` defines the `.npz` format (landmarks only, no image data).
+- D3: The calibration grid is one-at-a-time (each setting varied alone, others at defaults), not a cartesian product.
+- D4: Recommendation rule: among values with precision >= 0.9 take the best recall (ties: higher F1, then closest to the default); if none qualifies, the highest precision.
+- D5: Undefined precision, recall or F1 (zero denominator) are `None` and print `-`.
+- D6: `load_test` percentiles use linear interpolation over successful (200) jobs only; other statuses are counted separately.
+- D7: `load_test` uses `httpx` (dev extra, no new dependency); the inspect overlay uses OpenCV, already installed with mediapipe.
+- D8: Interim default `EXPRESSION_GROUP_MIN_RANGE={"brow_down": 0.20}` (2026-11-02), from 5 local adult webcam clips (expressive, flat face, follows text, hands on chin, pointing): the flat clip only exceeded 0.12 on `brow_down` (0.156; expressive clip 0.279). With it all 5 clips are classified correctly on both flags; a global `EXPRESSION_MIN_RANGE=0.16` also passed but with almost no margin and loosens every group. Pointing defaults unchanged (correct on all 5). To be replaced by the calibration on the labeled set (criterion 7).
 
 ---
 

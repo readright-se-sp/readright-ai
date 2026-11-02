@@ -5,7 +5,7 @@ The video lane of the MAI. It receives a job from the server (a recording on the
 - `is_finger_pointing`: whether the child points at the text with a finger while reading. How it works: see [How the finger-pointing check works](#how-the-finger-pointing-check-works).
 - `is_lack_expression`: whether the child's face stays expressionless while reading. How it works: see [How the expression check works](#how-the-expression-check-works).
 
-Current state (Phase 6): the full worker contract is implemented and the lane runs in Docker (`video/Dockerfile`, used by `compose.yaml`). Jobs are decoded to RGB frames (`app/frames.py`) and run through the MediaPipe face, hand and (optional) pose landmarkers (`app/landmarks.py`), and `decide()` (`app/decision.py`) decides `is_lack_expression` from the face blendshapes (`app/expression.py`) and `is_finger_pointing` from the hand (and optional pose) landmarks (`app/pointing.py`).
+Current state (Phase 7, tooling done, calibration pending): the full worker contract is implemented and the lane runs in Docker (`video/Dockerfile`, used by `compose.yaml`). Jobs are decoded to RGB frames (`app/frames.py`) and run through the MediaPipe face, hand and (optional) pose landmarkers (`app/landmarks.py`), and `decide()` (`app/decision.py`) decides `is_lack_expression` from the face blendshapes (`app/expression.py`) and `is_finger_pointing` from the hand (and optional pose) landmarks (`app/pointing.py`). The calibration and benchmarking devtools are in place (see [Calibration and benchmarking](#calibration-and-benchmarking)); the thresholds are still starting values, and calibration on labeled clips and the load test on the g5.2xlarge are pending.
 
 ## Prerequisites
 
@@ -70,7 +70,7 @@ Settings come from `MAI_VIDEO_*` environment variables or `.env` (see `.env.exam
 | `MAI_VIDEO_EXPRESSION_MIN_FACE_FRAMES` | `20` | Fewest frames with a face needed for the expression check (>= 1). |
 | `MAI_VIDEO_EXPRESSION_SMOOTH_FRAMES` | `3` | Window of the median smoothing that removes one-frame spikes (odd, >= 1, at most `MIN_FACE_FRAMES`). |
 | `MAI_VIDEO_EXPRESSION_MIN_RANGE` | `0.12` | A facial movement group must vary at least this much to count as expression (0-1). |
-| `MAI_VIDEO_EXPRESSION_GROUP_MIN_RANGE` | `{}` | JSON object overriding the minimum for single groups, e.g. `{"smile": 0.2}`. Groups: `brow_raise`, `brow_down`, `smile`, `frown`, `squint`, `eye_wide`, `sneer`. Values 0-1. |
+| `MAI_VIDEO_EXPRESSION_GROUP_MIN_RANGE` | `{"brow_down": 0.20}` | JSON object overriding the minimum for single groups, e.g. `{"smile": 0.2}`. Groups: `brow_raise`, `brow_down`, `smile`, `frown`, `squint`, `eye_wide`, `sneer`. Values 0-1. |
 | `MAI_VIDEO_POINTING_MIN_HAND_SCORE` | `0.5` | Hand detections below this confidence never count as a pointing hand (0-1). |
 | `MAI_VIDEO_POINTING_EXTENDED_MAX_BEND_DEG` | `35` | A finger counts as straight when both of its joints bend less than this many degrees (0-180). |
 | `MAI_VIDEO_POINTING_CURLED_MIN_BEND_DEG` | `60` | A finger counts as curled when its middle joint bends at least this many degrees (0-180). |
@@ -101,6 +101,39 @@ Times each landmarker per frame and the whole job on a recording, optionally com
 ```
 uv run python -m devtools.benchmark_frames <webm> [--parallel N] [--pose]
 ```
+
+## Calibration and benchmarking
+
+Devtools (outside the image, local use) to tune the thresholds on labeled recordings. Calibration and the load-test measurements are pending: no labeled clips or g5.2xlarge run exist yet, so the defaults are unchanged starting values.
+
+1. Extract landmark features once per clip (landmarks only, never images; cache is git-ignored in `.feature-cache/`):
+
+   ```
+   uv run python -m devtools.extract_features <webm_dir> [--cache DIR] [--pose]
+   ```
+
+2. Write a labels CSV with columns `file,is_finger_pointing,is_lack_expression` (extra columns ignored; `file` is matched by name without extension; booleans `true/false/1/0/yes/no`).
+3. Run the grid search (each setting varied alone, others at their defaults; override values with a repeatable `--grid name=v1,v2`):
+
+   ```
+   uv run python -m devtools.calibrate labels.csv [--cache DIR] [--grid expression_min_range=0.08,0.12]
+   ```
+
+   It prints TP/FP/TN/FN, precision, recall and F1 per flag and value (`-` when undefined), the files missing from the cache or unlabeled, and the recommended value per setting with the misclassified files. Exit codes: 0 on success, 2 for bad labels, an invalid `--grid` value or no file in both labels and cache. Unreadable cache files are listed and skipped; `use_pose` is skipped when the cache has no pose data.
+4. Pick the value with precision >= 0.9 and the best recall, then update the defaults in `app/config.py`, `.env.example` and the table above.
+5. Inspect one clip frame by frame (CSV on stdout, the decision as JSON on stderr; `--overlay out.mp4` draws landmarks, for consented clips only, local only, never shared):
+
+   ```
+   uv run python -m devtools.inspect_video <webm> [--pose] [--overlay out.mp4]
+   ```
+
+6. Load test a running lane (the files must already be on its scratch volume):
+
+   ```
+   uv run python -m devtools.load_test <url> <webm_path_on_lane>... [-n 10] [--deadline 115]
+   ```
+
+   It prints p50/p95/max job time for successful jobs, the count of other statuses, and `/stats`. Transport errors count under status 0. Exit code 1 if any job failed or none succeeded, else 0.
 
 ## How the expression check works
 

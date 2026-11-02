@@ -190,7 +190,7 @@ The biggest risk is that 10 simultaneous analyses do not fit in 115 s on one GPU
 
 Open decisions:
 
-- [ ] Which open-source video models, and which checks each must cover.
+- [x] Which open-source video models: MediaPipe Face and Hand landmarkers (optional Pose lite), on CPU. Accuracy on labeled clips and per-recording time under load are still pending calibration and the load test (`video/devtools/calibrate.py`, `video/devtools/load_test.py`).
 - [x] If the video worker fails or runs late: the request fails by default (500 `PROCESSING_FAILED`, or 504 `TIMEOUT` past the deadline); with `MAI_ALLOW_AUDIO_ONLY_ON_VIDEO_FAILURE=true` a video failure returns the audio-only result, but deadline expiry is always 504.
 - [ ] Final audio model size and backend, decided by the benchmark.
 - [ ] Domain name for the Caddy certificate.

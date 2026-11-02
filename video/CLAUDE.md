@@ -33,7 +33,7 @@ Package `app/` at the top level (no `src/` layout, same as `server/`).
 - `jobs.py`: `JobRunner` (concurrency limit, queue, disconnect polling, stats).
 - `logging.py`: JSON logs, `job_id_var`.
 - `Dockerfile`, `.dockerignore`: the lane image (models baked in at build time via `devtools.fetch_models`; only `fetch_models` is copied into it).
-- `devtools/`: `fetch_models` (download models) and `benchmark_frames` (timing). Not part of the app.
+- `devtools/`: `fetch_models` (download models), `benchmark_frames` (timing), `feature_cache` (shared .npz format), `extract_features` (cache landmarks per webm), `calibrate` (threshold grid search against a labels CSV), `inspect_video` (per-frame CSV, optional overlay), `load_test` (concurrent jobs against a running lane). Not part of the app; absolute `app.` imports.
 
 ## Conventions
 
