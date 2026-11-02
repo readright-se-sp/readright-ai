@@ -159,6 +159,16 @@ def test_repeat_with_a_word_between_is_one_insertion_not_a_repetition(lane: Audi
     assert result["score"]["error_count"] == 1
 
 
+def test_try_at_the_next_word_keeps_a_restart_a_repetition(lane: AudioPipeline) -> None:
+    """Real recording: 'I can't, I, I cannot' for 'I cannot'. 'can't' tried 'cannot'; the 'I's are repeated."""
+    result = lane.analyze(spoken("Lisa, I can't, I, I cannot make you a snack."), "Lisa, I cannot make you a snack.")
+    assert [(w["tag"], w["spoken_word"], w["attempts"]) for w in result["words"] if w["tag"] != "match"] == [
+        ("repetition", "i i", []),
+        ("self_correction", "cannot", ["cant"]),
+    ]
+    assert result["score"]["error_count"] == 1
+
+
 def test_contiguous_insertions_are_one_error(lane: AudioPipeline) -> None:
     result = lane.analyze(spoken("i will get up now i think this good"), "i will get up now")
     assert [w["counted"] for w in result["words"] if w["tag"] == "insertion"] == [True, False, False, False]
