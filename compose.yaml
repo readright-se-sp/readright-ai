@@ -1,0 +1,84 @@
+services:
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      MAI_SITE_ADDRESS: ${MAI_SITE_ADDRESS:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build: ./server
+    image: readright-mai-server
+    restart: unless-stopped
+    environment:
+      MAI_API_KEY: ${MAI_API_KEY:?set MAI_API_KEY in the shell or in the root .env}
+      MAI_LOG_LEVEL: ${MAI_LOG_LEVEL:-INFO}
+      MAI_SCRATCH_DIR: /scratch
+      MAI_REDIS_URL: redis://redis:6379/0
+      MAI_AUDIO_WORKER_URL: http://audio-worker:8001
+      MAI_VIDEO_WORKER_URL: http://video-worker:8002
+      MAI_S3_BUCKET: ${MAI_S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+    volumes:
+      - scratch:/scratch
+    depends_on:
+      redis:
+        condition: service_healthy
+      audio-worker:
+        condition: service_healthy
+      video-worker:
+        condition: service_healthy
+
+  redis:
+    image: redis:7.4
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  audio-worker:
+    build: ./server
+    image: readright-mai-server
+    restart: unless-stopped
+    command: uvicorn devtools.fake_workers:audio_app --host 0.0.0.0 --port 8001
+    volumes:
+      - scratch:/scratch:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  video-worker:
+    build: ./server
+    image: readright-mai-server
+    restart: unless-stopped
+    command: uvicorn devtools.fake_workers:video_app --host 0.0.0.0 --port 8002
+    volumes:
+      - scratch:/scratch:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  scratch:
+  redis-data:
+  caddy_data:
+  caddy_config:

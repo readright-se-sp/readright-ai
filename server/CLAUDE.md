@@ -36,6 +36,7 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 - `clips.py`: `wav_duration_ms()`, `cut_clip()` (padded WAV slice with the `wave` module).
 - `upload.py`: `upload_clips()` (boto3 in threads, bounded concurrency, errors to `UPLOAD_FAILED`).
 - `pipeline.py`: `pipeline_processor` (download, probe, convert, both lanes in parallel, merge, upload clips).
+- `Dockerfile`, `.dockerignore`: python 3.13-slim image with ffmpeg, `uv sync --frozen --no-dev`, non-root, one uvicorn worker; also runs the fake workers.
 - `devtools/fake_workers.py` (outside `app/`): fake audio/video lane apps for local runs.
 - `admission.py`: `WorkerStats`, `estimate_finish_seconds()`, cached `/stats` source, `Admission` (in-flight cap + deadline check).
 - `readiness.py`: `worker_ready()`, `s3_ready()`, `ffmpeg_ready()`.

@@ -6,9 +6,10 @@ import httpx
 import pytest
 import respx
 from admission_helpers import CountingProcessor, FakeStats, build_app, fast_settings, running
-from app.readiness import ffmpeg_ready, s3_ready, worker_ready
 from audio_helpers import BUCKET, REGION, use_fake_aws
 from moto import mock_aws
+
+from app.readiness import ffmpeg_ready, s3_ready, worker_ready
 
 pytestmark = pytest.mark.anyio
 

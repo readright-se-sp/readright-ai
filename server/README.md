@@ -2,7 +2,7 @@
 
 The HTTP entry point of the MAI. It implements the BE ⇄ MAI contract in [`../contracts/be-mai-openapi.yaml`](../contracts/be-mai-openapi.yaml) (v1.1.1). See the [root README](../README.md) for how the whole system works.
 
-> **Current state (Phase 6):** `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) merges their results, then cuts one mini audio file per miscue and uploads it to S3 (see [Mini audio files](#mini-audio-files-s3)). A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)). An S3 bucket and AWS credentials are needed for requests with miscues. **Admission control** rejects work that cannot finish in time with `429 RATE_LIMITED` (`Retry-After` set), and `503 SERVICE_UNAVAILABLE` when a worker's `/stats` cannot be read.
+> **Current state (Phase 7):** the whole MAI runs with `docker compose up --build` from the repo root (Caddy, api, Redis, fake workers, moto server for S3); see [Run with Docker Compose](#run-with-docker-compose) and [Deploy to the instance](#deploy-to-the-instance). Behaviour of the API (Phase 6): `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) merges their results, then cuts one mini audio file per miscue and uploads it to S3 (see [Mini audio files](#mini-audio-files-s3)). A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)). An S3 bucket and AWS credentials are needed for requests with miscues. **Admission control** rejects work that cannot finish in time with `429 RATE_LIMITED` (`Retry-After` set), and `503 SERVICE_UNAVAILABLE` when a worker's `/stats` cannot be read.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ Settings come from environment variables with the `MAI_` prefix, or from `.env`.
 | `MAI_VIDEO_WORKER_URL` | `http://localhost:8002` | Base URL of the video lane. |
 | `MAI_WORKER_CONNECT_TIMEOUT_SECONDS` | `5` | Connect timeout per lane call (capped by the remaining deadline). Must be > 0. |
 | `MAI_S3_BUCKET` | unset | Bucket for the mini audio files. Unset: startup logs a warning and any request with miscues fails `500 UPLOAD_FAILED`; zero-miscue requests still succeed. |
-| `MAI_S3_ENDPOINT_URL` | unset | Custom S3 endpoint (MinIO or a moto server) for local runs. |
+| `MAI_S3_ENDPOINT_URL` | unset | Custom S3 endpoint (a moto server) for local runs. |
 | `AWS_REGION` | `ap-southeast-1` | Region of the bucket. No `MAI_` prefix. Credentials come from the standard AWS chain (env vars, profile or instance role), never from `.env`. |
 | `MAI_UPLOAD_CONCURRENCY` | `8` | Maximum parallel clip uploads. Must be > 0. |
 | `MAI_CLIP_PADDING_MS` | `150` | Audio added before and after each miscue span (clamped to the recording). Must be >= 0. |
@@ -108,7 +108,7 @@ After the idempotency lookup (a stored result is always replayed) and before the
 
 After merging, the server cuts each miscue's span (plus padding) from the WAV with Python's `wave` module and uploads it to `MAI_S3_BUCKET` at its `audio_object_key`, inside the request deadline and before the result is stored. Any upload failure returns `500 UPLOAD_FAILED`. Keys are deterministic, so a retry overwrites the same objects.
 
-Required IAM permissions: `s3:PutObject` on `arn:aws:s3:::<bucket>/analyses/*` (or your `MAI_DEFAULT_OUTPUT_KEY_PREFIX` root) and `s3:ListBucket` on the bucket (for the `HeadBucket` readiness check). Old clips can be expired with an S3 lifecycle rule on the bucket (outside the server). For local runs, set `MAI_S3_ENDPOINT_URL` to MinIO or a moto server, or leave the bucket unset (only zero-miscue requests succeed).
+Required IAM permissions: `s3:PutObject` on `arn:aws:s3:::<bucket>/analyses/*` (or your `MAI_DEFAULT_OUTPUT_KEY_PREFIX` root) and `s3:ListBucket` on the bucket (for the `HeadBucket` readiness check). Old clips can be expired with an S3 lifecycle rule on the bucket (outside the server). For local runs, set `MAI_S3_ENDPOINT_URL` to a moto server, or leave the bucket unset (only zero-miscue requests succeed).
 
 ## Run
 
@@ -227,11 +227,41 @@ server/
 │   ├── readiness.py     # worker, S3 and ffmpeg readiness checks
 │   └── routes/          # analyses.py, health.py
 ├── devtools/            # fake_workers.py: fake audio/video lanes for local runs
+├── Dockerfile           # server image (also runs the fake workers)
+├── .dockerignore
 ├── tests/
 ├── .env.example
 ├── pyproject.toml
 └── uv.lock
 ```
+
+## Run with Docker Compose
+
+From the repo root (not `server/`). Needs Docker Desktop (or Docker Engine with the compose plugin).
+
+```bash
+cp .env.example .env                     # then set MAI_API_KEY (the root .env, never committed)
+docker compose up -d --build
+curl -k https://localhost/health/ready   # Caddy serves TLS from its internal CA, so use -k
+```
+
+Plain `docker compose up` also loads `compose.override.yaml`, which adds a moto server as local S3 (published on `localhost:5000`, data lost on restart) and a one-shot `s3-init` that creates the bucket `readright-local`. The workers are the fake lanes from `devtools/`, run from the same image. Stop with `docker compose down` (volumes `redis-data`, `caddy_data` and `caddy_config` are kept).
+
+End-to-end smoke test against the running stack (needs `ffmpeg` on the host):
+
+```bash
+READRIGHT_SMOKE_URL=https://localhost READRIGHT_SMOKE_API_KEY=<your key> uv run pytest tests/test_compose_smoke.py -q
+```
+
+## Deploy to the instance
+
+Images are built on the instance from a git checkout (no registry for now).
+
+1. Store the API key as an SSM Parameter Store SecureString (default name `/readright/mai/api-key`; override with `MAI_API_KEY_PARAMETER`) and let the instance role read it (`ssm:GetParameter`, plus `kms:Decrypt` if it uses a custom key) and write the bucket (see [Mini audio files](#mini-audio-files-s3)).
+2. Set the IMDSv2 hop limit to 2 on the instance (`aws ec2 modify-instance-metadata-options --http-put-response-hop-limit 2`), otherwise containers cannot reach the instance role credentials.
+3. In the root `.env` on the instance set `MAI_SITE_ADDRESS=readright-mai.reevsan.dev`, `MAI_S3_BUCKET` and `AWS_REGION`, and point the DNS record at the instance (ports 80 and 443 open, so Caddy can get a Let's Encrypt certificate).
+4. Run `scripts/start-stack.sh`. It reads the key from SSM and runs `docker compose -f compose.yaml up -d --build` (the override is not loaded, so real S3 and the instance role are used).
+5. Run `scripts/idle-check.sh` every 5 minutes from the **root** crontab or a root systemd timer (it calls `shutdown`). It checks `/health/live` through Caddy; set `MAI_SITE_ADDRESS` in the job's environment (or `HEALTH_URL`). It reads `last_request_at` (or `started_at`) from `/health/live` and runs `shutdown -h now` after `IDLE_MINUTES` (default 30) idle. Set the instance's shutdown behavior to Stop.
 
 ## Troubleshooting
 

@@ -1,0 +1,12 @@
+{$MAI_SITE_ADDRESS:localhost} {
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy api:8000 {
+		transport http {
+			dial_timeout 5s
+			read_timeout 150s
+			write_timeout 150s
+		}
+	}
+}
