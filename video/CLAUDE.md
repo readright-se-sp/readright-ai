@@ -30,6 +30,7 @@ Package `app/` at the top level (no `src/` layout, same as `server/`).
 - `decision.py`: `decide()` turns the feature series into flags and stats (false/false until Phases 5-6).
 - `jobs.py`: `JobRunner` (concurrency limit, queue, disconnect polling, stats).
 - `logging.py`: JSON logs, `job_id_var`.
+- `Dockerfile`, `.dockerignore`: the lane image (models baked in at build time via `devtools.fetch_models`; only `fetch_models` is copied into it).
 - `devtools/`: `fetch_models` (download models) and `benchmark_frames` (timing). Not part of the app.
 
 ## Conventions
