@@ -15,7 +15,7 @@ from app.models import ErrorCode
 pytestmark = pytest.mark.anyio
 
 SECRET = "SUPERSECRETSIGNATURE123"
-BASE = "https://bucket.s3.ap-southeast-1.amazonaws.com/recordings/abc.webm"
+BASE = "https://bucket.s3.ap-southeast-2.amazonaws.com/recordings/abc.webm"
 URL = f"{BASE}?X-Amz-Signature={SECRET}&X-Amz-Date=20260101T000000Z"
 MAX = 1000
 
@@ -36,7 +36,7 @@ async def fetch(dest: Path, *, max_bytes: int = MAX, dl: Deadline | None = None)
 
 
 def route(mock):
-    return mock.get(url__regex=r"https://bucket\.s3\.ap-southeast-1\.amazonaws\.com/.*")
+    return mock.get(url__regex=r"https://bucket\.s3\.ap-southeast-2\.amazonaws\.com/.*")
 
 
 # 8. client configuration ------------------------------------------------------------------------

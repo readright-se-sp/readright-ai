@@ -22,7 +22,7 @@ from botocore.config import Config
 BASE_URL = os.environ.get("READRIGHT_SMOKE_URL", "").rstrip("/")
 API_KEY = os.environ.get("READRIGHT_SMOKE_API_KEY", "")
 S3_URL = os.environ.get("READRIGHT_SMOKE_S3_URL", "http://localhost:5000")
-REGION = os.environ.get("AWS_REGION", "ap-southeast-1")
+REGION = os.environ.get("AWS_REGION", "ap-southeast-2")
 BUCKET = "readright-local"
 PASSAGE = "Pam has a cat. It is on the bed. It can nap."
 

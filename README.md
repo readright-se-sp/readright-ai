@@ -109,7 +109,7 @@ Each of `server/`, `audio/` and `video/` is an independent Python project with i
 
 ## Deployment
 
-MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose containers: `caddy` (TLS), `api` (the server), `audio-worker`, `video-worker` and `redis` (idempotency state). The instance is started for sessions and stopped in between. See [`docs/deployment-architecture.md`](docs/deployment-architecture.md) for the full design, time budget and cost estimate.
+MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-2) as Docker Compose containers: `caddy` (TLS), `api` (the server), `audio-worker`, `video-worker` and `redis` (idempotency state). The instance is started for sessions and stopped in between. See [`docs/deployment-architecture.md`](docs/deployment-architecture.md) for the full design, time budget and cost estimate.
 
 ## Getting started
 

@@ -28,7 +28,7 @@ services:
       MAI_AUDIO_WORKER_URL: http://audio-worker:8001
       MAI_VIDEO_WORKER_URL: http://video-worker:8002
       MAI_S3_BUCKET: ${MAI_S3_BUCKET:-}
-      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-2}
     volumes:
       - scratch:/scratch
     depends_on:

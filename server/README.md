@@ -82,7 +82,7 @@ Settings come from environment variables with the `MAI_` prefix, or from `.env`.
 | `MAI_WORKER_CONNECT_TIMEOUT_SECONDS` | `5` | Connect timeout per lane call (capped by the remaining deadline). Must be > 0. |
 | `MAI_S3_BUCKET` | unset | Bucket for the mini audio files. Unset: startup logs a warning and any request with miscues fails `500 UPLOAD_FAILED`; zero-miscue requests still succeed. |
 | `MAI_S3_ENDPOINT_URL` | unset | Custom S3 endpoint (a moto server) for local runs. |
-| `AWS_REGION` | `ap-southeast-1` | Region of the bucket. No `MAI_` prefix. Credentials come from the standard AWS chain (env vars, profile or instance role), never from `.env`. |
+| `AWS_REGION` | `ap-southeast-2` | Region of the bucket. No `MAI_` prefix. Credentials come from the standard AWS chain (env vars, profile or instance role), never from `.env`. |
 | `MAI_UPLOAD_CONCURRENCY` | `8` | Maximum parallel clip uploads. Must be > 0. |
 | `MAI_CLIP_PADDING_MS` | `150` | Audio added before and after each miscue span (clamped to the recording). Must be >= 0. |
 | `MAI_MAX_IN_FLIGHT` | `10` | Maximum requests in flight, per process. Must be > 0. |
@@ -135,7 +135,7 @@ curl -i -X POST http://localhost:8000/v1/analyses \
   -H "X-API-Key: dev-key" \
   -d '{
     "request_id": "3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11",
-    "video_url": "https://bucket.s3.ap-southeast-1.amazonaws.com/recordings/abc.webm?X-Amz-Signature=x",
+    "video_url": "https://bucket.s3.ap-southeast-2.amazonaws.com/recordings/abc.webm?X-Amz-Signature=x",
     "passage_title": "Pam'\''s Cat",
     "passage_content": "Pam has a cat. It is on the bed."
   }'
@@ -146,7 +146,7 @@ PowerShell:
 ```powershell
 $body = @{
   request_id      = "3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11"
-  video_url       = "https://bucket.s3.ap-southeast-1.amazonaws.com/recordings/abc.webm?X-Amz-Signature=x"
+  video_url       = "https://bucket.s3.ap-southeast-2.amazonaws.com/recordings/abc.webm?X-Amz-Signature=x"
   passage_title   = "Pam's Cat"
   passage_content = "Pam has a cat. It is on the bed."
 } | ConvertTo-Json

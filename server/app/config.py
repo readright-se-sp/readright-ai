@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     worker_connect_timeout_seconds: PositiveFloat = 5.0
     s3_bucket: str | None = None
     s3_endpoint_url: str | None = None
-    aws_region: str = Field("ap-southeast-1", validation_alias=AliasChoices("AWS_REGION"))
+    aws_region: str = Field("ap-southeast-2", validation_alias=AliasChoices("AWS_REGION"))
     upload_concurrency: PositiveInt = 8
     clip_padding_ms: NonNegativeInt = 150
     max_in_flight: PositiveInt = 10  # per process; run one uvicorn worker

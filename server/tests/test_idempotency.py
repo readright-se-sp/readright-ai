@@ -244,7 +244,7 @@ async def test_different_passage_while_in_progress_is_400_not_409(app, async_cli
 
 async def test_different_presigned_query_is_still_a_replay(app, async_client, auth):
     processor = app.state.processor = Processor()
-    base = "https://bucket.s3.ap-southeast-1.amazonaws.com/recordings/abc.webm"
+    base = "https://bucket.s3.ap-southeast-2.amazonaws.com/recordings/abc.webm"
     first = await post(async_client, auth, video_url=f"{base}?X-Amz-Signature=AAAA")
     second = await post(async_client, auth, video_url=f"{base}?X-Amz-Signature=BBBB&X-Amz-Date=1")
     assert second.status_code == 200
@@ -255,7 +255,7 @@ async def test_different_presigned_query_is_still_a_replay(app, async_client, au
 
 async def test_different_video_path_is_a_mismatch(app, async_client, auth):
     app.state.processor = Processor()
-    base = "https://bucket.s3.ap-southeast-1.amazonaws.com"
+    base = "https://bucket.s3.ap-southeast-2.amazonaws.com"
     assert (await post(async_client, auth, video_url=f"{base}/a.webm?s=1")).status_code == 200
     response = await post(async_client, auth, video_url=f"{base}/b.webm?s=1")
     assert response.status_code == 400

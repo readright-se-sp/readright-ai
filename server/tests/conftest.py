@@ -22,7 +22,7 @@ def valid_body(**overrides: Any) -> dict[str, Any]:
     body: dict[str, Any] = {
         "request_id": "3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11",
         "video_url": (
-            "https://bucket.s3.ap-southeast-1.amazonaws.com/recordings/abc.webm"
+            "https://bucket.s3.ap-southeast-2.amazonaws.com/recordings/abc.webm"
             f"?X-Amz-Signature={SIGNATURE}"
         ),
         "passage_title": "Pam's Cat",
