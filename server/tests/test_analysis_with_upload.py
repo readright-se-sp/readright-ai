@@ -168,7 +168,7 @@ def app(settings, redis):
 @pytest.fixture
 def routes():
     with respx.mock(assert_all_called=False) as router:
-        router.get(url__regex=r"https://bucket\.s3\.ap-southeast-1\.amazonaws\.com/.*").mock(
+        router.get(url__regex=r"https://bucket\.s3\.ap-southeast-2\.amazonaws\.com/.*").mock(
             return_value=httpx.Response(200, content=b"video-bytes")
         )
         router.post(VIDEO_URL).mock(return_value=httpx.Response(200, json=video_payload()))

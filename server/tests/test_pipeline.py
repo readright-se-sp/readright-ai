@@ -268,7 +268,7 @@ def app(settings, redis):
 @pytest.fixture
 def s3():
     with respx.mock(assert_all_called=False) as router:
-        yield router.get(url__regex=r"https://bucket\.s3\.ap-southeast-1\.amazonaws\.com/.*")
+        yield router.get(url__regex=r"https://bucket\.s3\.ap-southeast-2\.amazonaws\.com/.*")
 
 
 @pytest.fixture

@@ -26,7 +26,7 @@ def test_defaults():
     settings = make()
     assert settings.s3_bucket is None
     assert settings.s3_endpoint_url is None
-    assert settings.aws_region == "ap-southeast-1"
+    assert settings.aws_region == "ap-southeast-2"
     assert settings.upload_concurrency == 8
     assert settings.clip_padding_ms == 150
 
@@ -49,7 +49,7 @@ def test_read_from_environment(monkeypatch):
 def test_region_ignores_prefixed_variable(monkeypatch):
     # criterion 1: MAI_AWS_REGION is not used
     monkeypatch.setenv("MAI_AWS_REGION", "eu-west-1")
-    assert make().aws_region == "ap-southeast-1"
+    assert make().aws_region == "ap-southeast-2"
 
 
 @pytest.mark.parametrize("value", ["", "   ", "\t"])

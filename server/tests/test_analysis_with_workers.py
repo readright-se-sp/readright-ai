@@ -59,7 +59,7 @@ def fake_media(monkeypatch):
 
 class Routes:
     def __init__(self, router: respx.MockRouter):
-        self.s3 = router.get(url__regex=r"https://bucket\.s3\.ap-southeast-1\.amazonaws\.com/.*")
+        self.s3 = router.get(url__regex=r"https://bucket\.s3\.ap-southeast-2\.amazonaws\.com/.*")
         self.audio = router.post(AUDIO_URL)
         self.video = router.post(VIDEO_URL)
         self.healthy()

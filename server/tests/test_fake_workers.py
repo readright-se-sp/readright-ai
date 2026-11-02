@@ -306,7 +306,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(pipeline, "convert_to_wav", convert)
 
     with respx.mock(assert_all_called=False) as router:
-        router.get(url__regex=r"https://bucket\.s3\.ap-southeast-1\.amazonaws\.com/.*").respond(
+        router.get(url__regex=r"https://bucket\.s3\.ap-southeast-2\.amazonaws\.com/.*").respond(
             200, content=b"video-bytes"
         )
         router.post("http://audio.test:8001/v1/jobs").mock(

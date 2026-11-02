@@ -158,7 +158,7 @@ Decisions:
 - Upload happens inside the deadline and before the result is stored, so a replayed result always points to files that exist. Keys are deterministic, so a retry overwrites the same objects.
 - Any upload failure → 500 `UPLOAD_FAILED`.
 
-**Settings.** `MAI_S3_BUCKET`, `MAI_S3_ENDPOINT_URL`, `AWS_REGION` (default `ap-southeast-1`), `MAI_UPLOAD_CONCURRENCY` (e.g. 8), `MAI_CLIP_PADDING_MS`.
+**Settings.** `MAI_S3_BUCKET`, `MAI_S3_ENDPOINT_URL`, `AWS_REGION` (default `ap-southeast-2`), `MAI_UPLOAD_CONCURRENCY` (e.g. 8), `MAI_CLIP_PADDING_MS`.
 
 **Tests.** moto for S3: every miscue gets an object at its key with a valid WAV of the right length and format; padding is clamped to the recording's bounds; an upload error → 500 `UPLOAD_FAILED`; uploads respect the concurrency limit; no upload when there are no miscues.
 

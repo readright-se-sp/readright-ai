@@ -4,11 +4,11 @@ Last updated: 2026-11-01
 
 ## Overview
 
-MAI runs on one NVIDIA GPU server in AWS Singapore, started for presentation, testing and development sessions and stopped in between. The API server, audio path and video path run as separate containers on that machine, so they can be split across machines later without changing the MAI<->BE contract. This document covers MAI only; the FE, BE (Lambda) and Supabase are out of scope.
+MAI runs on one NVIDIA GPU server in AWS Sydney, started for presentation, testing and development sessions and stopped in between. The API server, audio path and video path run as separate containers on that machine, so they can be split across machines later without changing the MAI<->BE contract. This document covers MAI only; the FE, BE (Lambda) and Supabase are out of scope.
 
 | Area | Decision |
 | --- | --- |
-| Compute | One EC2 g5.2xlarge (1x A10G 24 GB, 8 vCPU, 32 GB RAM) in ap-southeast-1, on-demand, started and stopped by session |
+| Compute | One EC2 g5.2xlarge (1x A10G 24 GB, 8 vCPU, 32 GB RAM) in ap-southeast-2, on-demand, started and stopped by session |
 | Server | FastAPI on uvicorn with async I/O, behind Caddy (TLS) on an Elastic IP |
 | Audio | CrisperWhisper 2.0 in its own worker container: start with `large`, benchmark `turbo` and `medium`, fp16, batched |
 | Video | Placeholder worker container; models not chosen yet; shares the GPU with audio |
@@ -30,7 +30,7 @@ The contract fixes a synchronous 120 s request, so almost every design choice be
 | 5-10 students at once, none blocked by another | Team requirement | Async server, per-worker queues, batching |
 | Used in sessions of several hours (presentation, testing, development) | Team requirement | Start and stop the instance by session |
 | Non-commercial school or research pilot | Team requirement | CrisperWhisper's non-commercial license is acceptable |
-| Region: Singapore | Team requirement | ap-southeast-1 |
+| Region: Sydney | Team requirement | ap-southeast-2 |
 
 ## Architecture
 
@@ -39,7 +39,7 @@ The BE reaches one GPU instance through a TLS proxy, and the API server fans eac
 ```mermaid
 flowchart LR
   BE["BE<br/>AWS Lambda"] -->|HTTPS| Caddy
-  subgraph EC2["EC2 g5.2xlarge, ap-southeast-1"]
+  subgraph EC2["EC2 g5.2xlarge, ap-southeast-2"]
     Caddy["Caddy<br/>TLS proxy"] --> API["API server<br/>FastAPI, async<br/>POST /v1/analyses"]
     API <--> Redis["Redis<br/>request_id state"]
     subgraph GPU["Shared GPU, A10G 24 GB"]
@@ -107,7 +107,7 @@ One on-demand GPU instance, run only during sessions, with Docker Compose managi
 | Storage | One gp3 EBS volume, about 150 GB (estimate): Docker images, model weights baked in, scratch space for downloaded webm files |
 | Networking | Elastic IP and a domain name; Caddy gets a Let's Encrypt certificate. Only ports 80 and 443 are open |
 | Auth | `X-API-Key` checked in the API; the key lives in AWS Secrets Manager or SSM Parameter Store, not in the image |
-| Region | ap-southeast-1 (Singapore), same region as the S3 bucket |
+| Region | ap-southeast-2 (Sydney), same region as the S3 bucket |
 | Scheduling | Start and stop manually or with a small script; an idle check stops the instance after 30 minutes with no requests (it reads `last_request_at`, or `started_at` if null, from the server's `/health/live`) |
 
 Packaging in this repo: `compose.yaml` (caddy, api, redis, audio-worker, video-worker; only caddy publishes ports), `compose.override.yaml` (local only: moto server as S3), `Caddyfile` (site address from `MAI_SITE_ADDRESS`, upstream timeouts 150 s, 1 MB request limit) and `scripts/`. `scripts/start-stack.sh` reads the API key from SSM Parameter Store and runs `docker compose -f compose.yaml up -d --build` from a git checkout (no registry). `scripts/idle-check.sh` runs every 5 minutes and shuts the instance down after 30 minutes idle. The instance's IMDSv2 hop limit must be 2 so containers can use the instance role.
@@ -151,7 +151,7 @@ Lightweight landmark-style models (face, hand or pose detection) are typically c
 
 ## Cost estimate
 
-With sessions only, expect roughly $30-175 a month in compute; leaving the instance on 24/7 would be about $1,060. The hourly rate is an assumption: g5.2xlarge was found at $1.212/hr in us-east-1 and $1.455/hr in Mumbai, but no Singapore price, so the Mumbai figure is used. Check the AWS pricing calculator for ap-southeast-1 before committing.
+With sessions only, expect roughly $30-175 a month in compute; leaving the instance on 24/7 would be about $1,060. The hourly rate is an assumption: g5.2xlarge was found at $1.212/hr in us-east-1 and $1.455/hr in Mumbai, but no Sydney price, so the Mumbai figure is used. Check the AWS pricing calculator for ap-southeast-2 before committing.
 
 | Hours the instance runs per month | Compute at $1.455/hr |
 | --- | --- |
@@ -199,7 +199,7 @@ Open decisions:
 
 The benchmark passes if 10 simultaneous analyses of realistic recordings all finish inside the 115 s internal deadline, with audio timestamps accurate enough to cut usable clips.
 
-1. Request the G-family GPU quota in ap-southeast-1.
+1. Request the G-family GPU quota in ap-southeast-2.
 2. Launch a g5.2xlarge from a Deep Learning AMI and run CrisperWhisper alone on a few real student recordings.
 3. Time one analysis end to end and break it into download, ffmpeg, audio, video and upload.
 4. Run 10 at once and record how long the slowest takes.

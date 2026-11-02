@@ -13,7 +13,7 @@ RATE = 16000
 FRAMES_PER_MS = RATE // 1000
 REQUEST_ID = "3f6c1c7e-9a0d-4a53-8f55-5d2d4f0c8a11"
 BUCKET = "test-bucket"
-REGION = "ap-southeast-1"
+REGION = "ap-southeast-2"
 
 
 def sample_bytes(total_frames: int, offset: int = 0) -> bytes:
