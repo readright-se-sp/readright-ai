@@ -179,3 +179,88 @@ def test_unsorted_equals_sorted():
 def test_join_result_rejects_mismatched_lengths():
     with pytest.raises(ValidationError):
         JoinResult(unit_phonemes=((),), coverage_candidates=(), discarded=(), ms_per_phoneme=())
+
+
+# --- midpoint windows (B6a) ---
+
+
+def mid(units, phonemes, reach=300, **kw):
+    return run(units, phonemes, mode="midpoint", max_reach_ms=reach, **kw)
+
+
+def owners(r, phonemes):
+    """For each phoneme: unit index, or None when it is unassigned."""
+    out = []
+    for p in phonemes:
+        owner = next((i for i, g in enumerate(r.unit_phonemes) if p in g), None)
+        out.append(owner)
+    return out
+
+
+A, B = unit(1000, 2000), unit(2400, 3000, idx=1, key="b")  # gap 2000..2400, midpoint 2200
+
+
+def test_midpoint_splits_the_gap_in_the_middle():
+    ps = [
+        ph(2090, 2110),
+        ph(2190, 2200),
+        ph(2210, 2230),
+        ph(2290, 2310),
+    ]  # mids 2100 2195 2220 2300
+    assert owners(mid([A, B], ps), ps) == [0, 0, 1, 1]
+
+
+def test_midpoint_at_exactly_the_middle_goes_to_the_nearer_centre():
+    p = ph(2190, 2210)  # midpoint 2200: both windows reach it at the same edge distance
+    assert owners(mid([A, B], [p]), [p]) == [1]  # B centre 2700 is nearer than A centre 1500
+
+
+def test_cap_leaves_far_phonemes_unassigned():
+    ps = [ph(2040, 2060), ph(2150, 2170)]  # 50 and 160 ms past A's edge; B is 350 / 240 ms away
+    r = mid([A, B], ps, reach=100)
+    assert owners(r, ps) == [0, None]
+    assert [p for p in r.discarded] == [ps[1]]  # too short for a candidate
+
+
+def test_first_and_last_units_reach_outward_by_the_cap():
+    ps = [ph(890, 910), ph(780, 790), ph(3090, 3110), ph(3250, 3260)]
+    r = mid([A, B], ps, reach=150)  # first reaches back to 850, last forward to 3150
+    assert owners(r, ps) == [0, None, 1, None]
+
+
+def test_touching_units_have_no_gap():
+    t1, t2 = unit(1000, 2000), unit(2000, 3000, idx=1, key="b")
+    ps = [ph(1990, 2000), ph(2000, 2010), ph(2010, 2020)]  # mids 1995, 2005, 2015
+    assert owners(mid([t1, t2], ps), ps) == [0, 1, 1]
+
+
+def test_overlapping_units_use_the_nearer_centre_tie_order():
+    o1, o2 = unit(1000, 2000), unit(1800, 2600, idx=1, key="b")
+    p_both, p_only2 = ph(1890, 1910), ph(2290, 2310)
+    r = mid([o1, o2], [p_both, p_only2])
+    assert owners(r, [p_both, p_only2]) == [
+        1,
+        1,
+    ]  # inside both: o2 centre (2200) is nearer; only o2: o2
+
+
+def test_untimed_units_get_nothing_and_do_not_shorten_a_gap():
+    ps = [ph(2290, 2310)]
+    r = mid([A, untimed(1), B], ps, reach=300)
+    assert r.unit_phonemes[1] == () and owners(r, ps) == [2]
+
+
+def test_midpoint_every_phoneme_has_exactly_one_owner():
+    units = [unit(1000, 1500), untimed(1), unit(3000, 3400, idx=2, key="c")]
+    ps = [ph(900 + 80 * i, 940 + 80 * i) for i in range(45)]
+    r = mid(units, ps, reach=200)
+    out = [p for g in r.unit_phonemes for p in g]
+    out += [p for c in r.coverage_candidates for p in c.phonemes] + list(r.discarded)
+    assert sorted(out, key=lambda p: p.start_ms) == ps
+
+
+def test_pad_mode_is_the_old_rule():
+    ps = [ph(2040, 2060), ph(2150, 2170)]
+    pad = run([A, B], ps, pad_ms=80)
+    assert owners(pad, ps) == [0, None]  # 2060 mid is 60 past A (inside 80); 2160 is 160 past
+    assert pad == run([A, B], ps, pad_ms=80, mode="pad")

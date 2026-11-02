@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,7 +39,9 @@ class AudioSettings(BaseSettings):
     PHONEME_CONTEXT_S: float = 2  # extra audio each side of a chunk; its frames are discarded
 
     # Join by time (B3). Starting values; B6 measures them.
-    JOIN_PAD_MS: int = 50  # try 50-100
+    JOIN_MODE: Literal["midpoint", "pad"] = "midpoint"  # window rule, see lane_b/join.py
+    JOIN_PAD_MS: int = 50  # pad mode only
+    JOIN_MAX_REACH_MS: int = 200  # midpoint mode: furthest a unit reaches into a gap or past ends
     COVERAGE_MIN_MS: int = 120
     COVERAGE_MAX_GAP_MS: int = 300  # silence that ends a coverage run
 
