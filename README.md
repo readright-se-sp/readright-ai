@@ -34,7 +34,7 @@ BE ◄── analysis response (200, or a typed error)
 |---|---|
 | `server/` | The only HTTP entry point. Checks the API key and idempotency, downloads and preprocesses the recording, sends work to both lanes, cuts and uploads the mini audio files, and merges the results. |
 | `audio/` | Audio lane. Transcribes the WAV verbatim with CrisperWhisper, aligns it with the passage, and returns the miscues with their timestamps. |
-| `video/` | Video lane. Analyzes the reader on video (for example, finger pointing). Models are not chosen yet. |
+| `video/` | Video lane. Decides finger pointing and lack of expression from MediaPipe face and hand landmarks. See [video/README.md](video/README.md). |
 
 The audio and video lanes never touch S3, never call each other and never talk to the BE. They receive ready-to-use files from the server over a shared volume and return results. Only the server talks to S3.
 
@@ -94,7 +94,7 @@ The interface between the server and the two lanes is internal and documented in
 readright-ai/
 ├── server/          # HTTP entry: download, preprocess, fan-out, mini audio upload, merge
 ├── audio/           # audio lane (CrisperWhisper)
-├── video/           # video lane (models to be chosen)
+├── video/           # video lane (MediaPipe face and hand landmarks)
 ├── contracts/       # be-mai-openapi.yaml, and internal lane contracts
 ├── docs/            # deployment-architecture.md
 ├── scripts/         # start-stack.sh, idle-check.sh (instance side)
@@ -118,7 +118,8 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-2) as Docker Compose 
 | Project | Status |
 |---|---|
 | `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 7 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls, result merging, and cutting and uploading the mini audio files to S3. Admission control returns 429 when the work cannot finish in time, and `/health/ready` is 503 until Redis, both lanes, S3 and ffmpeg are up. Fake workers stand in for the lanes. |
-| `audio/`, `video/` | Not started. |
+| `audio/` | Not started. |
+| `video/` | Worker contract implemented with a placeholder analyzer that always answers `false/false` (Phase 1 of 7, see [video/ROADMAP.md](video/ROADMAP.md)). Runs locally on port 8002; not in Docker yet. |
 | Docker Compose | Done (Phase 7): `docker compose up --build` runs Caddy, the server, Redis, fake workers and a moto server for S3. See [server/README.md](server/README.md#run-with-docker-compose). |
 
 ### Run the server locally

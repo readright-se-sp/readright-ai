@@ -10,7 +10,8 @@ The MAI (Microservices AI) is the AI layer of ReadRight, an oral reading assessm
 ## Layout
 
 - `server/`: FastAPI entry point. See [server/CLAUDE.md](server/CLAUDE.md).
-- `audio/`, `video/`: analysis lanes. Not started yet.
+- `audio/`: audio lane. Not started yet.
+- `video/`: video lane, see [video/CLAUDE.md](video/CLAUDE.md).
 - `contracts/`: shared shapes live only here.
 - `compose.yaml` (production stack), `compose.override.yaml` (local moto S3), `Caddyfile`, `.env.example`, `scripts/` (`start-stack.sh`, `idle-check.sh`).
 - Each of `server/`, `audio/`, `video/` is an independent Python project. They share no code.
@@ -41,7 +42,7 @@ Each project is built in phases described in its own roadmap. Before planning or
 |---|---|
 | `server/` | [server/ROADMAP.md](server/ROADMAP.md) |
 | `audio/` | Not created yet |
-| `video/` | Not created yet |
+| `video/` | [video/ROADMAP.md](video/ROADMAP.md) |
 
 When code or decisions change, keep [README.md](README.md), the project's README and [docs/deployment-architecture.md](docs/deployment-architecture.md) consistent with them.
 
