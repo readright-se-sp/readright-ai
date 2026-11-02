@@ -5,7 +5,7 @@ The video lane of the MAI. It receives a job from the server (a recording on the
 - `is_finger_pointing`: whether the child points at the text with a finger while reading. How it works: filled in by Phases 5-6.
 - `is_lack_expression`: whether the child's face stays expressionless while reading. How it works: filled in by Phases 5-6.
 
-Current state (Phase 2): the full worker contract is implemented with a placeholder analyzer that always answers `false` for both flags. Frame decoding (`app/frames.py`: ffprobe + ffmpeg to RGB frames) is built but not yet wired into the analyzer.
+Current state (Phase 3): the full worker contract is implemented. Jobs are decoded to RGB frames (`app/frames.py`) and run through the MediaPipe face, hand and (optional) pose landmarkers (`app/landmarks.py`), but `decide()` (`app/decision.py`) still answers `false` for both flags until Phases 5-6.
 
 ## Prerequisites
 
@@ -14,6 +14,16 @@ Current state (Phase 2): the full worker contract is implemented with a placehol
   - Windows: `winget install Gyan.FFmpeg`
   - macOS: `brew install ffmpeg`
   - Debian/Ubuntu: `sudo apt install ffmpeg`
+
+## Models
+
+The MediaPipe model files are not committed. Download and hash-check them (listed in `models.lock`) into `MAI_VIDEO_MODEL_DIR`:
+
+```
+uv run python -m devtools.fetch_models
+```
+
+Without them the lane starts but `/health/ready` stays 503.
 
 ## Setup and run
 
@@ -45,6 +55,9 @@ Settings come from `MAI_VIDEO_*` environment variables or `.env` (see `.env.exam
 | `MAI_VIDEO_SAMPLE_FPS` | `5.0` | Frames sampled per second; lowered for long videos so `MAX_FRAMES` holds (> 0). |
 | `MAI_VIDEO_FRAME_WIDTH` | `640` | Decoded frame width in pixels, never above the source width (>= 64). |
 | `MAI_VIDEO_MAX_FRAMES` | `900` | Most frames decoded per job (>= 1). |
+| `MAI_VIDEO_MODEL_DIR` | `models` | Directory with the MediaPipe model files; relative paths resolve against the working directory. |
+| `MAI_VIDEO_NUM_HANDS` | `2` | Most hands detected per frame (1-4). |
+| `MAI_VIDEO_USE_POSE` | `false` | Also load and run the pose landmarker. |
 
 ## Tests and lint
 
@@ -52,6 +65,14 @@ Settings come from `MAI_VIDEO_*` environment variables or `.env` (see `.env.exam
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
+```
+
+## Benchmark
+
+Times each landmarker per frame and the whole job on a recording, optionally comparing N parallel jobs in threads and in processes:
+
+```
+uv run python -m devtools.benchmark_frames <webm> [--parallel N] [--pose]
 ```
 
 ## Privacy

@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2",
     "pydantic-settings",
     "numpy>=2.4.6",
+    "mediapipe==1.1.1",
 ]
 
 [project.optional-dependencies]

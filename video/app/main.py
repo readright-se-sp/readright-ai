@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from . import __version__
-from .analyzer import Analyzer, JobCancelled, PlaceholderAnalyzer
+from .analyzer import Analyzer, JobCancelled, MediaPipeAnalyzer
 from .config import Settings
 from .errors import LaneError, error_response, install_error_handlers
 from .jobs import JobRunner
@@ -50,7 +50,7 @@ def _check_path(settings: Settings, webm_path: str) -> Path:
 def create_app(settings: Settings | None = None, analyzer: Analyzer | None = None) -> FastAPI:
     settings = settings or Settings()
     configure_logging(settings.log_level)
-    analyzer = analyzer or PlaceholderAnalyzer()
+    analyzer = analyzer or MediaPipeAnalyzer(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

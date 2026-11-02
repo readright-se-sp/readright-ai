@@ -1,11 +1,22 @@
+import contextlib
+import logging
 import threading
 import time
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
+from .config import Settings
 from .errors import LaneError
 from .models import ErrorCode
+
+if TYPE_CHECKING:
+    from .frames import Frame
+    from .landmarks import FrameFeatures, ModelBundle
+
+logger = logging.getLogger(__name__)
 
 
 class JobCancelled(Exception):
@@ -41,19 +52,58 @@ class Analyzer(Protocol):
     def analyze(self, webm_path: Path, ctx: JobContext) -> VideoFlags: ...
 
 
-class PlaceholderAnalyzer:
-    """Always answers false/false until the real analysis lands (Phases 5-6)."""
+class SessionLike(Protocol):
+    def process(self, frame: "Frame") -> "FrameFeatures": ...
 
-    def __init__(self) -> None:
+
+class MediaPipeAnalyzer:
+    """Runs the MediaPipe landmarkers over sampled frames and decides the flags."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        session_factory: Callable[[], AbstractContextManager[SessionLike]] | None = None,
+    ) -> None:
+        self._settings = settings
+        self._session_factory = session_factory
+        self._bundle: ModelBundle | None = None
         self._ready = False
 
     def load(self) -> None:
+        # Imported here because frames and landmarks import this module.
+        from .landmarks import ModelBundle
+
+        bundle = ModelBundle(self._settings)
+        bundle.validate()
+        self._bundle = bundle
         self._ready = True
 
     @property
     def ready(self) -> bool:
         return self._ready
 
+    def _new_session(self) -> AbstractContextManager[SessionLike]:
+        if self._session_factory is not None:
+            return self._session_factory()
+        from .landmarks import LandmarkerSession
+
+        assert self._bundle is not None
+        return LandmarkerSession(self._bundle, self._settings)
+
     def analyze(self, webm_path: Path, ctx: JobContext) -> VideoFlags:
-        ctx.check()
-        return VideoFlags(is_finger_pointing=False, is_lack_expression=False)
+        from .decision import decide
+        from .frames import iter_frames, plan_sampling, probe
+
+        settings = self._settings
+        plan = plan_sampling(probe(webm_path, settings), settings)
+        features: list[FrameFeatures] = []
+        with (
+            self._new_session() as session,
+            contextlib.closing(iter_frames(webm_path, plan, ctx, settings)) as frames,
+        ):
+            for frame in frames:
+                ctx.check()
+                features.append(session.process(frame))
+        decision = decide(features, plan, settings)
+        logger.info("analysis finished", extra=decision.stats)
+        return decision.flags
