@@ -121,6 +121,42 @@ Runs from the Step 1 cache only, with no model loads.
 - ROADMAP gets a B6a row and decisions.
 - `docs/deployment-architecture.md` is updated if a setting the server cares about changed.
 
+## Results (partial: stopped at Step 4, 2026-11-02)
+
+Steps 0 to 3 are done (cache and replay, midpoint windows, coverage guard, ending rule, `reason`, adaptive switch). The sweep (`devtools/sweep_join.py`, 64 configs from the cache, selection rule as written) did **not** reach the target, so Step 5 (defaults, live re-run) and the rest of Step 4 (hand-checked fixture) are on hold. Defaults in `config.py` are still the plan's starting values (`midpoint`, reach 200, guard 0.5, adaptive on).
+
+Replay check: replaying the cache at the I1 settings reproduces I1's live label changes exactly (88 / 5 / 7 / 8 / 4 over 735 rows).
+
+Selection set (6 recordings), top 10 by false-overrule rate (FOR) with coverage at least 85%. Held-out columns are reported, not used:
+
+| Config | Sel FOR | Sel coverage | Sel errors (Lane A to final) | Held FOR | Held coverage |
+|---|---|---|---|---|---|
+| pad50 guard0.67 adaptive on | 3.85% | 86.97% | 44 to 49 | 4.90% | 91.32% |
+| pad100 guard0.67 adaptive on | 4.17% | 91.24% | 44 to 51 | 4.25% | 94.63% |
+| mid100 guard0.67 adaptive on | 4.17% | 91.24% | 44 to 51 | 4.25% | 94.63% |
+| pad150 guard0.67 adaptive on | 4.38% | 92.31% | 44 to 52 | 4.21% | 95.45% |
+| pad200 guard0.67 adaptive on | 4.38% | 92.31% | 44 to 52 | 5.14% | 95.45% |
+| mid150 guard0.67 adaptive on | 4.38% | 92.31% | 44 to 52 | 4.21% | 95.45% |
+| mid200 guard0.67 adaptive on | 4.38% | 92.31% | 44 to 52 | 5.14% | 95.45% |
+| mid300 guard0.67 adaptive on | 4.64% | 92.31% | 44 to 53 | 5.14% | 95.45% |
+| pad50 guard0.67 adaptive off | 8.24% | 86.97% | 44 to 65 | 10.29% | 91.32% |
+| pad100 guard0.67 adaptive off | 8.85% | 91.24% | 44 to 69 | 9.91% | 94.63% |
+
+I1 baseline (pad 50, no guard, adaptive on): selection FOR 14.84% (coverage 97.0%), held-out 12.22% (98.4%).
+
+**Chosen by the rule:** `mid100 guard0.67 adaptive on`: selection FOR 4.17%, coverage 91.24%; **held-out FOR 4.25%, coverage 94.63%** (9 of 212 judged `match` rows, all in the two `marian_came` recordings). Target (held-out FOR at most 2% with coverage at least 85%) **not met**. No config in the grid has held-out FOR at or under 2% (best 4.21%), so it isn't a selection artefact.
+
+What the sweep shows:
+- The window rule is not the main lever any more: `pad100` to `pad200` and `mid100` to `mid300` all land within 0.5 points of each other (midpoint ties `pad100`; it wins only on the tie-break). Most of the I1 gain (15% to about 4 to 5%) comes from the coverage guard.
+- The guard is the lever and 0.67 is the top of the grid: FOR is flat from guard 0 to 0.5 (10.6%, 9.7%, 9.7% at mid200) and drops to 4.4% at 0.67, at about 6 points of coverage. The grid does not show where it stops helping.
+- The adaptive overrule matters a lot (FOR doubles with it off), the opposite of Q3's expectation: it can't be removed.
+- Counted errors still rise over Lane A alone (44 to 51 on the selection set, 16 to 20 held-out), and clears (SUB or MISPRON to match) are only 9 and 5.
+
+The 25 remaining false overrules at the chosen config (13 selection, 9 held-out `marian_came`, plus 3 `ring_ring`) fall into three patterns:
+1. **Short function words with 40 to 160 ms windows and garbage heard** (`we` heard /i h/, `a` /h/, `for` /v ɛ/ and /w ɛ/, `you` /u ɡ/, `her` /ɹ ɚ/, `she` /s ʊ/, `up` /p ɛ/ in 60 ms, `guess`): about 11 rows. A phoneme from a neighbour or noise lands in the window, or the recogniser misses the vowel.
+2. **Longer words with real divergence** (`market` /m aɪ d ə t/, `vegetables` /b ɹ ɪ k s ə ɡ ɚ z/, `string` /t ɪ ŋ …/, `shrimp`, `sprouting`, `happily`, `marian`, `sure`, `after`, `stall`, `horn`, `stayed`, `beans`): about 13 rows. Many are probably true mispronunciations that CrisperWhisper normalised to the right word (Q4), so some of this FOR is not false. Labels (B6b) are the only way to tell.
+3. **A repeated word merged into one row** (`ring` heard /ɹ æ ŋ ɹ æ ŋ/, d 1.16): 1 row.
+
 ## Open questions (recommendation first)
 
 - **Q1 keep `pad` mode?** Recommendation: remove it after B6a if `midpoint` wins, so there is one rule. Keep it if `pad` wins.
