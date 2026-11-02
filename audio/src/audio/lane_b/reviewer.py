@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from audio.alignment.labels import WordLabeler
 from audio.alignment.text import is_proper_noun, normalize
 from audio.arbitration.arbiter import arbitrate
 from audio.config import AudioSettings
@@ -114,22 +115,46 @@ def _unknown_name(unit: Unit, passage: PreparedPassage, names: frozenset[str]) -
     return any(is_proper_noun(t.key, names) and not _in_lexicon(t.key, lexicon) for t in tokens)
 
 
-def _evidence(verdict: WordVerdict, check: PhoneticCheck) -> PhoneticEvidence:
+def _evidence(verdict: WordVerdict, check: PhoneticCheck, reason: str | None) -> PhoneticEvidence:
     best = verdict.best_variant_index
     expected = verdict.expected_phonemes[best] if best is not None else ()
-    return PhoneticEvidence(
+    evidence = PhoneticEvidence(
         expected_phonemes=list(expected),
         heard_phonemes=list(verdict.heard_phonemes),
         d_exp=verdict.distance_expected,
         d_hyp=verdict.distance_hypothesis,
         check=check.value,
     )
+    if reason:
+        evidence["reason"] = reason
+    return evidence
 
 
-def _write_back(row: AlignedWord, tag: Tag, evidence: PhoneticEvidence) -> AlignedWord:
-    if tag != row["tag"]:
-        keep = row["detail"] if row["detail"] == "miscorrection" and tag != "match" else None
-        row = retag(row, tag, keep)
+def _is_ending_row(row: AlignedWord, labeler: WordLabeler, names: frozenset[str]) -> bool:
+    """Lane A calls this a mispronunciation with detail "ending" (``buys`` read "buy").
+
+    Phil-IRI counts it as a mispronunciation, so Lane B may confirm it or clear it to a match,
+    but never make it a substitution.
+    """
+    expected, heard = row["passage_word"], row["spoken_word"]
+    if row["tag"] == "mispronunciation":
+        return row["detail"] == "ending"
+    if row["tag"] != "substitution" or not expected or not heard or " " in heard:
+        return False
+    label = labeler.label(expected, heard, names)
+    return label.tag == "mispronunciation" and label.detail == "ending"
+
+
+def _write_back(
+    row: AlignedWord, tag: Tag, evidence: PhoneticEvidence, ending: bool = False
+) -> AlignedWord:
+    detail = None
+    if ending and tag in ("substitution", "mispronunciation"):
+        tag, detail = "mispronunciation", "ending"
+    elif row["detail"] == "miscorrection" and tag != "match":
+        detail = "miscorrection"
+    if tag != row["tag"] or detail != row["detail"]:
+        row = retag(row, tag, detail)
     else:
         row = row.copy()
     row["phonetic"] = evidence
@@ -146,6 +171,7 @@ class PhoneticReviewer:
         hypotheses: PassagePreparer,
         settings: AudioSettings,
         log: logging.Logger | None = None,
+        labeler: WordLabeler | None = None,
     ) -> None:
         """``passages`` caches per passage; ``hypotheses`` (cache_size=0) prepares the ASR words."""
         self._recogniser = recogniser
@@ -153,6 +179,7 @@ class PhoneticReviewer:
         self._hypotheses = hypotheses
         self._settings = settings
         self._log = log or logger
+        self._labeler = labeler or WordLabeler()
         self.last_timing_ms: dict[str, int] = {}  # recognise_ms, total_ms of the latest review
 
     def review(
@@ -203,6 +230,8 @@ class PhoneticReviewer:
             hypothesis,
             t_flag=s.T_FLAG,
             t_overrule=s.T_OVERRULE,
+            coverage_guard_ratio=s.COVERAGE_GUARD_RATIO,
+            adaptive_overrule=s.ADAPTIVE_OVERRULE,
         )
 
         out = list(rows)
@@ -210,7 +239,7 @@ class PhoneticReviewer:
         for verdict, unit, row_i in zip(
             result.verdicts, adapted.lane_a.units, adapted.row_index, strict=True
         ):
-            label, check = verdict.label, verdict.phonetic_check
+            label, check, reason = verdict.label, verdict.phonetic_check, verdict.reason
             if (
                 verdict.stage3_label == WordLabel.CORRECT
                 and label == WordLabel.MISPRONUNCIATION
@@ -221,8 +250,12 @@ class PhoneticReviewer:
                     "phonetic_check=unverifiable reason=name_not_in_lexicon row=%d", row_i
                 )
                 label, check = verdict.stage3_label, PhoneticCheck.UNVERIFIABLE
+                reason = "name_not_in_lexicon"
             row = out[row_i]
-            new = _write_back(row, _LABEL_TO_TAG[label], _evidence(verdict, check))
+            ending = check == PhoneticCheck.DONE and _is_ending_row(
+                row, self._labeler, context.proper_nouns
+            )
+            new = _write_back(row, _LABEL_TO_TAG[label], _evidence(verdict, check, reason), ending)
             changed += new["tag"] != row["tag"]
             out[row_i] = new
         total_ms = round((time.perf_counter() - t0) * 1000)

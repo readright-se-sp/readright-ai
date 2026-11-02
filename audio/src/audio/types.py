@@ -274,6 +274,8 @@ class WordVerdict(_Model):
     stage3_label: WordLabel
     label: WordLabel
     phonetic_check: PhoneticCheck
+    # why the check is not "done": untimed, no_heard, low_coverage (B6a); None otherwise
+    reason: str | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:

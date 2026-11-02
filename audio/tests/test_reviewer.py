@@ -28,6 +28,8 @@ TABLE = {
     "cannot": CANNOT,
     "zorbo": ("z", "ɔ", "b", "o"),
     "tinoy": ("t", "i", "n", "ɔ", "i"),
+    "buys": ("b", "aɪ", "z"),
+    "buy": ("b", "aɪ"),
 }
 
 
@@ -270,3 +272,49 @@ def test_counted_is_consistent_with_the_tag_after_any_retag():
     rev, _ = reviewer(heard(CAT, 0) + heard(CAT, 1000))
     for out in rev.review("a.wav", rows, ctx("cat dog")):
         assert out["counted"] == (out["tag"] in COUNTED_TAGS)
+
+
+# --- ending rule and reasons (B6a) ---
+
+
+def test_an_ending_row_judged_as_substitution_stays_a_mispronunciation_with_detail():
+    rows = [row("substitution", "buys", "buy", 0.0, 0.5, [0])]
+    rev, _ = reviewer(
+        heard(("b", "aɪ"), 0)
+    )  # sounds like "buy": nearer the ASR word, so substitution
+    (out,) = rev.review("a.wav", rows, ctx("buys"))
+    assert (out["tag"], out["detail"], out["counted"]) == ("mispronunciation", "ending", True)
+    assert out["phonetic"]["check"] == "done"
+
+
+def test_an_ending_row_can_still_be_cleared_to_a_match():
+    rows = [row("substitution", "buys", "buy", 0.0, 0.5, [0])]
+    rev, _ = reviewer(heard(("b", "aɪ", "z"), 0))  # the child said "buys"
+    (out,) = rev.review("a.wav", rows, ctx("buys"))
+    assert (out["tag"], out["detail"], out["counted"]) == ("match", None, False)
+
+
+def test_a_substitution_that_is_not_an_ending_stays_a_substitution():
+    rows = [row("substitution", "cat", "dog", 0.0, 0.5, [0])]
+    rev, _ = reviewer(heard(DOG, 0))
+    (out,) = rev.review("a.wav", rows, ctx("cat"))
+    assert (out["tag"], out["detail"]) == ("substitution", None)
+
+
+def test_unverifiable_rows_say_why():
+    rows = [
+        row("match", "cat", "cat", None, None, [0]),
+        row("match", "dog", "dog", 1.0, 1.5, [1]),
+    ]
+    rev, _ = reviewer(())  # nothing heard
+    untimed, silent = rev.review("a.wav", rows, ctx("cat dog"))
+    assert untimed["phonetic"]["reason"] == "untimed"
+    assert silent["phonetic"]["reason"] == "no_heard"
+
+
+def test_a_low_coverage_overrule_is_blocked_with_a_reason():
+    rows = [row("match", "fish", "fish", 0.0, 0.5, [0])]
+    rev, _ = reviewer(heard(("f",), 0))  # 1 of 3 phonemes heard, guard 0.5 needs 2
+    (out,) = rev.review("a.wav", rows, ctx("fish"))
+    assert out["tag"] == "match"
+    assert (out["phonetic"]["check"], out["phonetic"]["reason"]) == ("unverifiable", "low_coverage")

@@ -70,6 +70,7 @@ class PhoneticEvidence(TypedDict):
     d_exp: float | None
     d_hyp: float | None
     check: PhoneticCheckState
+    reason: NotRequired[str]  # why check is not "done": untimed, no_heard, low_coverage, name_not_in_lexicon
 
 
 class AlignedWord(TypedDict):

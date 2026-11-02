@@ -1,6 +1,7 @@
 """Arbitration (spec 5.6 steps 4-5): final label per unit from Stage 3, join and compare."""
 
 import logging
+import math
 from collections.abc import Sequence
 
 from audio.lane_b.compare import compare, unit_variants
@@ -70,7 +71,13 @@ def arbitrate(
     *,
     t_flag: float,
     t_overrule: float,
+    coverage_guard_ratio: float = 0.0,
+    adaptive_overrule: bool = True,
 ) -> ArbitrationResult:
+    """Final label per unit. A CORRECT word is only overruled when Lane B heard at least
+    ceil(coverage_guard_ratio x shortest expected pronunciation) phonemes (0 = no guard); below
+    that the label stays and the check is UNVERIFIABLE with reason "low_coverage".
+    """
     n = len(lane_a.units)
     if join is not None and (len(join.unit_phonemes) != n or len(join.ms_per_phoneme) != n):
         raise ValueError("join must have one entry per unit")
@@ -83,10 +90,13 @@ def arbitrate(
     for i, (unit, stage3) in enumerate(zip(lane_a.units, lane_a.labels, strict=True)):
         expected = unit_variants(unit, passage)
         heard = tuple(t.symbol for t in join.unit_phonemes[i]) if join else ()
+        reason = None
         if join is None:
             check = PhoneticCheck.SKIPPED
-        elif not unit.verifiable or (not heard and stage3 != _L.OMISSION):
-            check = PhoneticCheck.UNVERIFIABLE
+        elif not unit.verifiable:
+            check, reason = PhoneticCheck.UNVERIFIABLE, "untimed"
+        elif not heard and stage3 != _L.OMISSION:
+            check, reason = PhoneticCheck.UNVERIFIABLE, "no_heard"
         else:
             check = PhoneticCheck.DONE
 
@@ -102,10 +112,14 @@ def arbitrate(
             n_exp = len(expected[0]) if expected else 0
             eff_overrule = (
                 _adaptive_overrule(t_overrule, n_exp, len(heard))
-                if stage3 == _L.CORRECT
+                if stage3 == _L.CORRECT and adaptive_overrule
                 else t_overrule
             )
             label = _label(stage3, exp.distance, d_hyp, exp.deviations, heard, t_flag, eff_overrule)
+            if stage3 == _L.CORRECT and label != stage3 and coverage_guard_ratio > 0:
+                shortest = min(len(v) for v in expected)
+                if len(heard) < math.ceil(coverage_guard_ratio * shortest):
+                    label, check, reason = stage3, PhoneticCheck.UNVERIFIABLE, "low_coverage"
             threshold = eff_overrule if stage3 == _L.CORRECT else t_flag
             if abs(exp.distance - threshold) <= _NEAR:
                 logger.info(
@@ -129,6 +143,7 @@ def arbitrate(
                 stage3_label=stage3,
                 label=label,
                 phonetic_check=check,
+                reason=reason,
             )
         )
 
