@@ -1,6 +1,6 @@
 # Phase B1.1 plan — Real passages and lexicon coverage
 
-Status: draft, waiting for user approval. Run it **after B2 is committed**: it edits the fixtures and data files B2 is still using. Planning happens in one session and implementation in another. The implementing session follows this file and [../ROADMAP.md](../ROADMAP.md) "How to work a phase" steps 4–5. It does not change decisions here; if something does not work, it stops and reports.
+Status: approved. B2 is committed (`59ab750`), so this can run now. Planning happens in one session and implementation in another. The implementing session follows this file and [../ROADMAP.md](../ROADMAP.md) "How to work a phase" steps 4–5. It does not change decisions here; if something does not work, it stops and reports.
 
 ## Goal
 
@@ -46,7 +46,9 @@ Add `audio/devtools/recordings.py` with `PASSAGE_BY_PREFIX: dict[str, str]`, bui
 
 **Gap found:** `spoken_form("Juaning’s")` is `juaning's`, which is not in the lexicon, so espeak anglicises the whole word.
 
-Change the pronunciation lookup in `passage.py`. When `spoken_form` ends in `'s` and the form without it is in the lexicon, use each lexicon pronunciation plus a final `z`, and also plus a final `s`. Both are accepted, so this adds no new decision for B4.
+Change the pronunciation lookup in `passage.py` (`_build`). Order: lexicon, then possessive of a lexicon word, then espeak. When `spoken_form` ends in `'s` and the form without it is in the lexicon, use each lexicon pronunciation plus a final `z`, and also plus a final `s`. Both are accepted, so this adds no new decision for B4. Exclude these possessive forms from `to_phonemize` too, so espeak is not called for them.
+
+Known ceiling: a lexicon word ending in `s`, `z`, `ʃ`, `ʒ`, `tʃ` or `dʒ` would need `ɪz`. No real passage has one; add it when one appears.
 
 Add tests for `Juaning’s`, `Tinoy’s` and `Tita’s`. Non-lexicon possessives (for example `Nick's`) keep going to espeak unchanged.
 
@@ -69,7 +71,7 @@ pardo: ["p a ɾ d o", "p ɑ ɹ d oʊ"]
 anansi: ["a n a n s i", "ə n ɑ n s i"]
 ```
 
-`mang` and `aling` already exist; check that they are there. Leave English names (Jacky, Kris, Lisa, Mike, Nick, Marian) to espeak. Add a golden check that each one gives a non-empty result containing no unknown symbols.
+`mang` and `aling` already exist; check that they are there. `marian` and `tricycle` are already in the lexicon; leave them. Leave the English names (Jacky, Kris, Lisa, Mike, Nick) to espeak. Add a golden check that each one gives a non-empty result containing no unknown symbols.
 
 ### 5. Abbreviations and interjections
 
@@ -87,11 +89,11 @@ Add a test that `Mr.` and `Mrs.` in a passage give these pronunciations.
 
 Add one `espeak`-marked test. It prepares all seven real passages, then asserts that every key has at least one variant and that no segment is outside `INVENTORY`.
 
-It also lists every word that goes to espeak (not the lexicon) and that starts with a capital letter in the middle of a sentence, compared against an allow-list of English names in the test (`jacky, kris, lisa, mike, nick, marian, mama, mom, saturday, cheese, i`). The test fails on any name not in the lexicon or the allow-list. This is the guard against a future passage with a Filipino name being silently anglicised.
+It also lists every word that goes to espeak (not the lexicon) and that starts with a capital letter in the middle of a sentence. A token is at a sentence start when it is the first token, when the previous token ends in `.`, `!` or `?` (a closing quote after it is allowed), or when the token itself starts with an opening quote (`“` or `"`); this keeps `“This`, `“I` and `“Taho` out. Compare these words against an allow-list of English names in the test (`jacky, kris, lisa, mike, nick, marian, mama, mom, saturday, cheese, i`). The test fails on any name not in the lexicon or the allow-list. This is the guard against a future passage with a Filipino name being silently anglicised.
 
 ### 7. Spike re-run (report only)
 
-If B2's spike summary exists, add a second reference to `devtools/phoneme_spike.py`: `--reference passage`, which is G2P of the mapped passage text, first variant.
+Needs the 9 recordings in `audio/data/`. If they are missing, stop and report instead of skipping. Add a second reference to `devtools/phoneme_spike.py`: `--reference passage`, which is G2P of the mapped passage text, first variant.
 - Re-run the chosen model only.
 - Append a "Passage reference" table to `plans/phase-B2-spike.md` with median PER per passage and the five recordings with the highest PER.
 - This does not change the model choice; the B2 criteria stand. A high passage PER on one recording against a low Whisper-reference PER on the same recording points to reading miscues, which is the signal B4 and B5 are meant to catch.

@@ -20,6 +20,7 @@ def load_fixture(name: str) -> tuple[PreparedPassage, LaneAResult]:
 PASSAGES = FIXTURES / "passages"
 PASSAGE_NAMES = (
     "a_mouse_and_a",
+    "anansi",
     "every_saturday",
     "mama_was",
     "marian_came",
@@ -29,7 +30,7 @@ PASSAGE_NAMES = (
 
 
 def load_passage(name: str) -> str:
-    """Load tests/fixtures/passages/<name>.txt (made-up placeholder text)."""
+    """Load tests/fixtures/passages/<name>.txt (the real passage text)."""
     return (PASSAGES / f"{name}.txt").read_text(encoding="utf-8")
 
 

@@ -40,7 +40,7 @@ SPLIT_MAP: dict[str, tuple[str, ...]] = {
 }
 
 # Allowed segments: everything the en-us espeak voice produces after normalisation, plus the
-# Tagalog tap. Built from the placeholder passages, the lexicon, the variants and a few hundred
+# Tagalog tap. Built from the passages, the lexicon, the variants and a few hundred
 # common words, then frozen and reviewed by hand.
 INVENTORY: frozenset[str] = frozenset(
     {

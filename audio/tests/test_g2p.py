@@ -6,6 +6,7 @@ import yaml
 
 from audio.phonetics import g2p as g2p_module
 from audio.phonetics.g2p import EspeakG2P, G2PError, build_g2p
+from audio.phonetics.ipa import INVENTORY
 from audio.settings import AudioSettings
 
 GOLDEN = Path(__file__).parent / "fixtures" / "g2p_golden.yaml"
@@ -43,6 +44,14 @@ def test_output_length_and_digits(espeak_g2p):
     out = espeak_g2p.phonemize(words)
     assert len(out) == len(words)
     assert all(out)
+
+
+@espeak_only
+@pytest.mark.parametrize("word", ["jacky", "kris", "lisa", "mike", "nick", "you're", "nick's"])
+def test_english_names_and_contractions_have_known_symbols(espeak_g2p, word):
+    seq = espeak_g2p.phonemize([word])[0]
+    assert seq
+    assert set(seq) <= INVENTORY, (word, seq)
 
 
 @espeak_only

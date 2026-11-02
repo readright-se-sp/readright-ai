@@ -55,6 +55,13 @@ def interim_key(raw: str) -> str:
     return spoken_form(raw).replace("'", "").replace("-", "")
 
 
+def _possessive_base(form: str, lexicon) -> str | None:
+    """The lexicon word of a possessive (``juaning's`` -> ``juaning``), else None."""
+    if form.endswith("'s") and form[:-2] in lexicon:
+        return form[:-2]
+    return None
+
+
 def _dedupe(seqs: list[PhoneSeq]) -> list[PhoneSeq]:
     return list(dict.fromkeys(seqs))
 
@@ -91,7 +98,10 @@ class PassagePreparer:
 
         spoken = [spoken_form(r) for r in raws]
         unique = list(dict.fromkeys(spoken))
-        to_phonemize = [w for w in unique if w not in lexicon]
+        # Lookup order: lexicon, possessive of a lexicon word, espeak.
+        to_phonemize = [
+            w for w in unique if w not in lexicon and _possessive_base(w, lexicon) is None
+        ]
         try:
             phonemized = self._g2p.phonemize(to_phonemize) if to_phonemize else []
         except G2PError as exc:
@@ -100,8 +110,12 @@ class PassagePreparer:
 
         per_form: dict[str, list[PhoneSeq]] = {}
         for form in unique:
+            base = _possessive_base(form, lexicon)
             if form in lexicon:
                 seqs = list(lexicon[form])
+            elif base is not None:
+                # ponytail: no ɪz after s/z/ʃ/ʒ/tʃ/dʒ; add when a passage has such a name.
+                seqs = [(*s, "z") for s in lexicon[base]] + [(*s, "s") for s in lexicon[base]]
             else:
                 seqs = [espeak[form], *variants.get(form, ())]
             per_form[form] = _dedupe(seqs)

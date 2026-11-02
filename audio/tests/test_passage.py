@@ -108,9 +108,43 @@ def test_g2p_error_becomes_preparation_error_and_is_not_cached():
     assert g2p.calls == 2  # the failure was not cached
 
 
+def test_possessive_of_a_lexicon_word_takes_z_and_s_without_espeak():
+    g2p = FakeG2P()
+    prepared = PassagePreparer(g2p).prepare("Juaning’s Tinoy’s Tita’s")
+    assert g2p.calls == []
+    lexicon = load_lexicon()
+    for key, base in [("juanings", "juaning"), ("tinoys", "tinoy"), ("titas", "tita")]:
+        expected = [(*s, "z") for s in lexicon[base]] + [(*s, "s") for s in lexicon[base]]
+        assert prepared.pronunciations[key] == tuple(expected)
+
+
+def test_possessive_of_a_non_lexicon_word_still_goes_to_espeak():
+    g2p = FakeG2P()
+    PassagePreparer(g2p).prepare("Nick's Tita’s")
+    assert g2p.calls == [["nick's"]]
+
+
+def test_abbreviations_use_the_lexicon():
+    g2p = FakeG2P()
+    prepared = PassagePreparer(g2p).prepare("Mr. Perez and Mrs. Pardo, Mmm")
+    assert g2p.calls == [["and"]]
+    lexicon = load_lexicon()
+    for key in ("mr", "mrs", "mmm"):
+        assert prepared.pronunciations[key] == lexicon[key]
+    assert lexicon["mr"] == (("m", "ɪ", "s", "t", "ɚ"),)
+
+
+def test_new_filipino_entries_are_present():
+    lexicon = load_lexicon()
+    for word in ("mang", "aling", "ador", "taho", "mongo", "tita", "tinoy", "juaning", "manuel"):
+        assert word in lexicon
+    for word in ("perez", "pardo", "anansi", "marian", "tricycle"):
+        assert word in lexicon
+
+
 @pytest.mark.espeak
 @pytest.mark.parametrize("name", PASSAGE_NAMES)
-def test_placeholder_passages_prepare(espeak_g2p, name):
+def test_real_passages_prepare(espeak_g2p, name):
     content = load_passage(name)
     preparer = PassagePreparer(espeak_g2p)
     prepared = preparer.prepare(content)
@@ -131,14 +165,75 @@ def test_placeholder_passages_prepare(espeak_g2p, name):
 
 
 @pytest.mark.espeak
+def test_inline_edge_cases_prepare(espeak_g2p):
+    """Features the real texts lack: a digit, hyphens, a dash, contractions, heteronyms."""
+    text = "I read 5 books. Don't live in an ice-cream shop — it's Nick's, isn't it? We live well."
+    prepared = PassagePreparer(espeak_g2p).prepare(text)
+    keys = {t.key for t in prepared.tokens}
+    assert {"5", "dont", "icecream", "its", "nicks", "isnt"} <= keys
+    assert len(prepared.tokens) == 17  # the dash is dropped
+    assert len(prepared.pronunciations["read"]) >= 2
+    assert len(prepared.pronunciations["live"]) >= 2
+    for seqs in prepared.pronunciations.values():
+        assert seqs
+        for seq in seqs:
+            assert set(seq) <= INVENTORY, seq
+
+
+@pytest.mark.espeak
 def test_passages_start_with_the_recording_prefix():
     starts = {
         "a_mouse_and_a": "A mouse and a",
+        "anansi": "Anansi was tired",
         "every_saturday": "Every Saturday",
         "mama_was": "Mama was",
         "marian_came": "Marian came",
         "nick_is_a_tri": "Nick is a tri",
-        "ring_ring": "Ring, ring!",
+        "ring_ring": "“Ring! Ring!”",
     }
     for name, start in starts.items():
         assert load_passage(name).startswith(start)
+
+
+ENGLISH_NAMES = {"jacky", "kris", "lisa", "mike", "nick", "marian", "mama", "mom", "saturday"}
+ENGLISH_NAMES |= {"cheese", "i"}
+_OPENING_QUOTES = ("“", '"')
+
+
+def _mid_sentence_capitals(raws: list[str]) -> list[str]:
+    """Spoken forms of capitalised tokens that are not at a sentence start."""
+    found = []
+    for i, raw in enumerate(raws):
+        if i == 0 or raw.startswith(_OPENING_QUOTES):
+            continue
+        if raws[i - 1].rstrip("”’\"'").endswith((".", "!", "?")):
+            continue
+        letters = raw.lstrip("".join(_OPENING_QUOTES) + "‘'")
+        if letters[:1].isupper():
+            found.append(spoken_form(raw))
+    return found
+
+
+@pytest.mark.espeak
+def test_real_passages_cover_every_word_and_name(espeak_g2p):
+    lexicon = load_lexicon()
+    preparer = PassagePreparer(espeak_g2p)
+    anglicised = set()
+    for name in PASSAGE_NAMES:
+        content = load_passage(name)
+        prepared = preparer.prepare(content)
+        for key, seqs in prepared.pronunciations.items():
+            assert seqs, (name, key)
+            for seq in seqs:
+                assert set(seq) <= INVENTORY, (name, key, seq)
+        for form in _mid_sentence_capitals(tokenise(content)):
+            base = form[:-2] if form.endswith("'s") else form
+            if form not in lexicon and base not in lexicon:
+                anglicised.add(form)
+    unknown = anglicised - ENGLISH_NAMES
+    assert not unknown, f"capitalised words that espeak would anglicise: {sorted(unknown)}"
+
+
+def test_mid_sentence_capital_detector():
+    raws = tokenise("The cat. “This is Juaning’s fish,” said Kris. Then, Mike went to Cebu!")
+    assert _mid_sentence_capitals(raws) == ["juaning's", "kris", "mike", "cebu"]

@@ -19,9 +19,9 @@ The trace and ASR word list are consistent with the units.
 
 ## passages/*.txt
 
-Six **made-up placeholder** passages (60–120 words, Grade 1–3 level), named after the file-name prefixes of the recordings in `audio/data/`. They are **not** the texts the recordings read. Real texts must replace them before any real-recording fixture or calibration (B6), and every Filipino word in the real texts must be added to the lexicon. Tests rely only on each passage's opening phrase.
+The **real passage texts** the recordings read, byte for byte (UTF-8, curly quotes kept). Source: the Supabase passages export of 2026-11-02 (one `text` column, 8 rows, no titles; row 8 duplicates row 4 and is skipped). They are copies of `docs/lane-b-context/passages/`. File names follow the recording prefixes in `audio/data/` (see `devtools/recordings.py`); `anansi.txt` has no recording and is extra Stage 0 coverage.
 
-Between them they cover a digit, contractions, a possessive, hyphenated compounds, heteronyms in context (read, live), a dash token, curly apostrophes (`nick_is_a_tri`) and Filipino names and words from the lexicon.
+The texts have no digit, hyphen or dash, and no straight-apostrophe contraction. Those cases are covered by inline strings in `test_passage.py`.
 
 ## g2p_golden.yaml
 

@@ -25,8 +25,12 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "devtools"))
 
-from audio.passage import spoken_form  # noqa: E402
+from recordings import PASSAGE_NAME_BY_PREFIX as PASSAGE_NAMES  # noqa: E402
+from recordings import passage_for  # noqa: E402
+
+from audio.passage import PassagePreparer, spoken_form  # noqa: E402
 from audio.phonetics.g2p import G2PError, build_g2p  # noqa: E402
 from audio.phonetics.ipa import INVENTORY  # noqa: E402
 from audio.recognition.audio_io import SAMPLE_RATE, load_wav  # noqa: E402
@@ -117,6 +121,15 @@ def load_reference(wav: Path, g2p, duration_s: float):
         windows.append((start, end, list(seq), form))
         ref.extend(seq)
     return ref, windows
+
+
+def passage_reference(wav: Path, g2p):
+    """Reference from the mapped passage text: first variant of each token, in order."""
+    prepared = PassagePreparer(g2p).prepare(passage_for(wav))
+    ref: list[str] = []
+    for token in prepared.tokens:
+        ref.extend(prepared.pronunciations[token.key][0])
+    return ref
 
 
 # --- measurement -------------------------------------------------------------------------
@@ -384,10 +397,76 @@ def write_summary(stats: dict, decision: dict) -> None:
     SUMMARY.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def passage_report(g2p) -> None:
+    """B1.1: PER of the chosen model against the passage text, next to the Whisper reference."""
+    import torch
+
+    wavs = recordings()
+    transcribe_all(wavs)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    settings = AudioSettings(_env_file=None)
+    rec = Wav2Vec2PhonemeRecognizer(
+        CANDIDATES[1], device, False, settings.phoneme_chunk_s, settings.phoneme_context_s
+    )
+    rows = []
+    for wav in wavs:
+        samples = load_wav(wav)
+        hyp = [t.symbol for t in rec.recognise(wav, None)]
+        ref_whisper, _ = load_reference(wav, g2p, len(samples) / SAMPLE_RATE)
+        ref_passage = passage_reference(wav, g2p)
+        rows.append(
+            {
+                "recording": wav.stem,
+                "passage": next(v for k, v in PASSAGE_NAMES.items() if wav.name.startswith(k)),
+                "per_passage": levenshtein(hyp, ref_passage) / max(1, len(ref_passage)),
+                "per_whisper": levenshtein(hyp, ref_whisper) / max(1, len(ref_whisper)),
+            }
+        )
+        print(f"   {wav.stem[:12]} passage={rows[-1]['per_passage']:.3f}", flush=True)
+    lines = [
+        "",
+        "## Passage reference (B1.1)",
+        "",
+        f"`{CANDIDATES[1]}`, fp32, {device}. Reference: G2P of the mapped passage text, first",
+        "variant (`--reference passage`). The Whisper column is the B2 reference on the same",
+        "recordings. The B2 model choice is unchanged.",
+        "",
+        "| Passage | Recordings | Median PER (passage ref) | Median PER (Whisper ref) |",
+        "|---|---|---|---|",
+    ]
+    for name in dict.fromkeys(r["passage"] for r in rows):
+        group = [r for r in rows if r["passage"] == name]
+        lines.append(
+            f"| `{name}` | {len(group)} | {statistics.median(r['per_passage'] for r in group):.3f} "
+            f"| {statistics.median(r['per_whisper'] for r in group):.3f} |"
+        )
+    lines += [
+        "",
+        "Five highest PER against the passage:",
+        "",
+        "| Recording | Passage | PER (passage ref) | PER (Whisper ref) |",
+        "|---|---|---|---|",
+    ]
+    for r in sorted(rows, key=lambda r: -r["per_passage"])[:5]:
+        lines.append(
+            f"| `{r['recording'][:14]}` | `{r['passage']}` | {r['per_passage']:.3f} "
+            f"| {r['per_whisper']:.3f} |"
+        )
+    text = SUMMARY.read_text(encoding="utf-8")
+    head = text.split("\n## Passage reference (B1.1)")[0].rstrip("\n")
+    SUMMARY.write_text(head + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cpu-only", metavar="MODEL", help="child mode: fp32 on CPU for MODEL")
     parser.add_argument("--summary-only", action="store_true")
+    parser.add_argument(
+        "--reference",
+        choices=["passage"],
+        help="B1.1: re-run the chosen model against the passage text and append the table",
+    )
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     wavs = recordings()
@@ -401,6 +480,9 @@ def main() -> None:
 
     settings = AudioSettings(_env_file=None)
     g2p = build_g2p(settings)
+    if args.reference == "passage":
+        passage_report(g2p)
+        return
     if args.cpu_only:
         append_rows(run_config(args.cpu_only, "cpu", False, wavs, g2p))
         return
