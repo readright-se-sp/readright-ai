@@ -10,6 +10,7 @@ It carries the context that planning and implementation sessions need on any mac
 - `go2_arch_rev2.txt`: plain-text extraction of the docx, tables included.
 - `readright_technical_design_ai.pdf`: handwritten pipeline sketch (Lane A, Lane B, join by time, arbitrate, post-pass) and miscue examples. No text layer.
 - `projectstructure.txt`: early repo layout. Predates Rev 2; `audio/ROADMAP.md` has the current layout.
+- `passages/`: the real passage texts (Supabase export, 2026-11-02), byte for byte. Used by Phase B1.1.
 
 Where the spec says WhisperX, read CrisperWhisper (agreed design).
 
