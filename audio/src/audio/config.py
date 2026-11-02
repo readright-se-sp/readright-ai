@@ -21,7 +21,10 @@ class AudioSettings(BaseSettings):
     ASR_COMPUTE_TYPE: str = "float16"  # int8 on CPU
     ASR_BATCH_SIZE: int = 8
 
-    # Lane B (phonetic lane). Stage 0 passage preparation (espeak-ng).
+    # Lane B (phonetic lane). PHONETIC_ENABLED=false runs Lane A alone (no phoneme model is loaded).
+    PHONETIC_ENABLED: bool = True
+
+    # Stage 0 passage preparation (espeak-ng).
     ESPEAK_LANGUAGE: str = "en-us"  # espeak voice
     # Path to libespeak-ng.dll/.so. When set, it is exported as PHONEMIZER_ESPEAK_LIBRARY
     # before the espeak backend is created.
