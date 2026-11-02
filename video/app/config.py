@@ -30,6 +30,20 @@ class Settings(BaseSettings):
     expression_smooth_frames: int = Field(default=3, ge=1)
     expression_min_range: float = Field(default=0.12, ge=0, le=1)
     expression_group_min_range: dict[str, float] = {}
+    pointing_min_hand_score: float = Field(default=0.5, ge=0, le=1)
+    pointing_extended_max_bend_deg: float = Field(default=35, ge=0, le=180)
+    pointing_curled_min_bend_deg: float = Field(default=60, ge=0, le=180)
+    pointing_merge_gap_ms: float = Field(default=400, gt=0)
+    pointing_min_episode_ms: float = Field(default=600, gt=0)
+    pointing_min_total_ms: float = Field(default=2000, gt=0)
+    pointing_min_total_fraction: float = Field(default=0.05, ge=0, le=1)
+    pointing_use_sweeps: bool = True
+    sweep_min_ms: float = Field(default=1000, gt=0)
+    sweep_min_dx: float = Field(default=0.10, gt=0, le=1)
+    sweep_return_max_ms: float = Field(default=1000, gt=0)
+    sweep_min_count: int = Field(default=2, ge=1)
+    pointing_pose_min_visibility: float = Field(default=0.5, ge=0, le=1)
+    pointing_pose_bottom_band: float = Field(default=0.3, ge=0, le=1)
 
     @field_validator("expression_smooth_frames")
     @classmethod

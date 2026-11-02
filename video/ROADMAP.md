@@ -11,7 +11,7 @@ The video lane is built in 7 phases. Each phase below says what to build, the in
 | 3 | MediaPipe landmarks and models | Done |
 | 4 | Packaging and compose | Done |
 | 5 | Lack of expression | Done |
-| 6 | Finger pointing | Not started |
+| 6 | Finger pointing | Done |
 | 7 | Calibration, benchmark and docs | Not started |
 
 ## How to work a phase
@@ -427,7 +427,18 @@ class JobRunner:
 
 **Done when.** The criteria pass and the README explains the check and its limits.
 
-**Decisions.** (filled in when the phase is done)
+**Decisions.**
+- Pose cue C is built behind the existing `MAI_VIDEO_USE_POSE` (default false); enable only if Phase 7 shows it helps.
+- Cue B (sweeps) needs no hand-shape support and no minimum hand score (any detected hand).
+- Recording device still to confirm with the FE team before Phase 7 data collection.
+- Merge gap = time of the missing frames: `next.first_ts − prev.last_ts − frame_interval`.
+- `episodes()` returns inclusive `(first_index, last_index)` pairs; durations come from timestamps.
+- A zero-length bone gives a `nan` bend, so the finger is neither extended nor curled by bend.
+- `pose_frames` counts frames with cue C evidence (not frames with any pose).
+- Sweep return = largest move back from the sweep's extreme within `SWEEP_RETURN_MAX_MS`, same hand segment, ≥ half the sweep.
+- No cross-check that `EXTENDED_MAX_BEND_DEG` < `CURLED_MIN_BEND_DEG`.
+- `reason="shape"` covers both cue A and cue C.
+- A non-finite fingertip x (NaN or inf) is treated like a missing hand and splits the sweep track.
 
 ---
 

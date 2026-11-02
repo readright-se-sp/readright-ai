@@ -5,6 +5,7 @@ from .analyzer import VideoFlags
 from .config import Settings
 from .expression import assess_expression
 from .landmarks import FrameFeatures
+from .pointing import assess_pointing
 
 if TYPE_CHECKING:
     from .frames import SamplePlan
@@ -17,8 +18,9 @@ class Decision:
 
 
 def decide(features: list[FrameFeatures], plan: "SamplePlan", settings: Settings) -> Decision:
-    """Phase 5: lack of expression from face blendshapes; finger pointing is Phase 6 (false)."""
+    """Phase 6: lack of expression from face blendshapes, finger pointing from hand landmarks."""
     expression = assess_expression(features, settings)
+    pointing = assess_pointing(features, plan, settings)
     stats: dict[str, float | int | str] = {
         "frames": len(features),
         "face_frames": expression.face_frames,
@@ -28,9 +30,11 @@ def decide(features: list[FrameFeatures], plan: "SamplePlan", settings: Settings
     }
     for group, value in expression.variability.items():
         stats[f"expr_var_{group}"] = value
+    stats.update(pointing.stats)
     return Decision(
         flags=VideoFlags(
-            is_finger_pointing=False, is_lack_expression=expression.is_lack_expression
+            is_finger_pointing=pointing.is_finger_pointing,
+            is_lack_expression=expression.is_lack_expression,
         ),
         stats=stats,
     )
