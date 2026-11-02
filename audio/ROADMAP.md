@@ -18,7 +18,7 @@ This file covers Lane B and the interim shared pieces. Lane A adds its own phase
 | B1 | Stage 0 passage preparation (espeak-ng IPA) | Done: [plans/phase-B1.md](plans/phase-B1.md) |
 | B1.1 | Real passages and lexicon coverage | Done: [plans/phase-B1.1.md](plans/phase-B1.1.md) |
 | B2 | Phoneme recogniser spike and implementation | Done: [plans/phase-B2.md](plans/phase-B2.md), spike: [plans/phase-B2-spike.md](plans/phase-B2-spike.md) |
-| B3 | Join by time and coverage candidates | Not started |
+| B3 | Join by time and coverage candidates | Done: [plans/phase-B3.md](plans/phase-B3.md) |
 | B4 | Compare (weighted phoneme distance, accent table) | Not started |
 | B5 | Arbitration | Not started |
 | B6 | Calibration on real recordings | Not started |
@@ -148,12 +148,13 @@ Measure:
 ## Phase B3 — Join by time
 
 **Build.**
-- Each `PhonemeToken` goes to the unit whose window `[start_ms − JOIN_PAD_MS, end_ms + JOIN_PAD_MS]` contains its midpoint. Overlapping windows go to the unit with the nearer centre.
+- Each `PhonemeToken` goes to the unit whose window `[start_ms − JOIN_PAD_MS, end_ms + JOIN_PAD_MS]` contains its midpoint. Overlapping windows: unpadded containment first, then the nearest edge, then the nearer centre, then the lower unit index.
 - Phonemes outside every window are grouped into runs. A run of at least `COVERAGE_MIN_MS` becomes a `CoverageCandidate`, tagged with the passage position it follows. These feed the post-pass and the OMISSION rule in arbitration.
 - Units with `verifiable=False` (no timing) get no phonemes.
-- Duration ratio per unit: `(end_ms − start_ms) / max(1, len(heard_phonemes))`, handed to the post-pass.
+- Duration per unit (`ms_per_phoneme`): `(end_ms − start_ms) / expected_count`, where `expected_count` is the sum of the shortest variant lengths over the unit's passage tokens. `None` for insertions, omissions and untimed units. Handed to the post-pass.
+- Coverage runs also break on silence longer than `AUDIO_COVERAGE_MAX_GAP_MS`. Runs shorter than `COVERAGE_MIN_MS` go to `JoinResult.discarded`.
 
-**Settings.** `AUDIO_JOIN_PAD_MS` (start at 80, try 50–100), `AUDIO_COVERAGE_MIN_MS` (start at 120, measure).
+**Settings.** `AUDIO_JOIN_PAD_MS` (start at 80, try 50–100), `AUDIO_COVERAGE_MIN_MS` (start at 120, measure), `AUDIO_COVERAGE_MAX_GAP_MS` (start at 300, measure).
 
 **Tests.** Boundary phonemes, overlapping windows, gaps that do and do not reach `COVERAGE_MIN_MS`, units without timing.
 
@@ -242,3 +243,4 @@ INSERTION passes through unchanged to the post-pass.
 - B1 (2026-11-02): espeak-ng via `phonemizer`, voice `en-us`, no stress marks; length marks are stripped (tense/lax survives in vowel quality). The lexicon replaces espeak (Filipino form first, anglicised second); `variants.yaml` adds to espeak's output. Heteronyms get both readings. The passage title is not read or scored. G2P input (`spoken_form`) and matching key (`interim_key`) are separate; `interim_key` is an interim stand-in for Lane A's Normalise (Rev 2 rules 1, 4, 7 only) and is the one function to replace at reconciliation. The lexicon lives in code-side YAML (`phonetics/data/`), not in `passages.proper_nouns`. `INVENTORY` is frozen in `ipa.py` (54 segments, including espeak's merged units such as `ɛɹ`, `ɑɹ`, `əl`, `aɪɚ`, and the Tagalog `a o u ɾ`). `LaneAResult` now rejects overlapping units. The six test passages were made-up placeholders (replaced in B1.1); the lexicon is unreviewed by a Filipino speaker.
 - B1.1 (2026-11-02): the fixtures are the real passage texts (Supabase export, byte for byte; row 4 is the canonical "Every Saturday"; Anansi has no recording). `devtools/recordings.py` maps recording prefixes to passages. Lexicon lookup order is lexicon, then possessive of a lexicon word (each pronunciation plus a final `z`, and plus `s`; no `ɪz` after sibilants, a known ceiling), then espeak. Abbreviations and interjections (`mr`, `mrs`, `mmm`) live in the lexicon. A test fails when a capitalised mid-sentence word is in neither the lexicon nor the English-name allow-list. Spike re-run against the passage text is in `plans/phase-B2-spike.md` ("Passage reference"); the B2 model choice stands.
 - B2 (2026-11-02): wav2vec2 CTC through `transformers`, greedy decoding, times on the 20 ms grid; 20 s chunks with 2 s context whose frames are discarded; WAV read with stdlib `wave` (no ffmpeg or torchaudio). `deadline_ms` is an absolute UTC epoch time in ms, as in the worker contract. espeak's merged units (`ɛɹ ɑɹ ɔɹ ɪɹ ʊɹ əl aɪə aɪɚ iə`) are now split into single segments by `SPLIT_MAP` plus a greedy fallback, and removed from `INVENTORY`; `g2p_golden.yaml` was regenerated once for this (9 words). `build_g2p(settings)` is the only place a G2P is built from settings (Windows default espeak path when unset). Model chosen by the pre-agreed rule: PER medians 0.358 (lv-60) and 0.368 (xlsr-53) are within 0.02, so the lower warm GPU latency wins, which is xlsr-53 by about 1% (noise-level; lv-60 has the slightly lower PER and fewer non-English phones). fp16 gives NaN/Inf logits on the GTX 1660 Ti, so it stays off; re-check on the A10G in the deployment benchmark. Non-English tokens are kept; the xlsr model emitted `e` (16 times) and a few `ø y ɨ x` on the 9 recordings, so B4 needs a feature distance for `e`. torch is >=2.6 from the cu126 index, because transformers refuses `torch.load` of the models' `pytorch_model.bin` below torch 2.6 (CVE-2025-32434) and torch 2.6+ has no cu121 wheels.
+- B3 (2026-11-02): `lane_b/join.py` is a pure function returning `JoinResult` (`unit_phonemes`, `coverage_candidates`, `discarded`, `ms_per_phoneme`). Overlap rule: unpadded containment, nearest edge, nearer centre, lower index. `ms_per_phoneme` divides by the expected phoneme count (shortest variant), not the heard count, so a word hiding several attempts shows a long duration. Coverage runs break on silence over `AUDIO_COVERAGE_MAX_GAP_MS`; short runs are kept in `discarded` so the one-owner invariant is checkable. Timed omission units take part in the join; untimed units get no phonemes. The three settings are starting values; B6 calibrates them.

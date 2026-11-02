@@ -20,3 +20,8 @@ class AudioSettings(BaseSettings):
     phoneme_fp16: bool = False  # ignored on CPU
     phoneme_chunk_s: float = 20  # audio per forward pass
     phoneme_context_s: float = 2  # extra audio each side of a chunk; its frames are discarded
+
+    # Join by time (B3). Starting values; B6 measures them.
+    join_pad_ms: int = 80  # AUDIO_JOIN_PAD_MS, try 50-100
+    coverage_min_ms: int = 120  # AUDIO_COVERAGE_MIN_MS
+    coverage_max_gap_ms: int = 300  # AUDIO_COVERAGE_MAX_GAP_MS, silence that ends a run

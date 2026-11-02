@@ -37,6 +37,7 @@ PhoneSeq = tuple[Symbol, ...]  # IPA segments, already normalised (no stress, no
 Ms = Annotated[int, Field(ge=0)]
 Unit01 = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 Distance = Annotated[float, Field(ge=0, allow_inf_nan=False)]
+NonNegFloat = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 
 
 class WordLabel(StrEnum):
@@ -232,6 +233,19 @@ class CoverageCandidate(_Model):
         return self
 
 
+class JoinResult(_Model):
+    unit_phonemes: tuple[tuple[PhonemeToken, ...], ...]  # one entry per unit, in unit order
+    coverage_candidates: tuple[CoverageCandidate, ...]  # in time order
+    discarded: tuple[PhonemeToken, ...]  # runs shorter than COVERAGE_MIN_MS
+    ms_per_phoneme: tuple[NonNegFloat | None, ...]  # one entry per unit
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if len(self.unit_phonemes) != len(self.ms_per_phoneme):
+            raise ValueError("unit_phonemes and ms_per_phoneme must have the same length")
+        return self
+
+
 # --- Arbitration output (input to the post-pass) ---
 
 Deviation = tuple[
@@ -273,7 +287,7 @@ class WordVerdict(_Model):
 class ArbitrationResult(_Model):
     verdicts: tuple[WordVerdict, ...]
     coverage_candidates: tuple[CoverageCandidate, ...]
-    ms_per_phoneme: tuple[Annotated[float, Field(ge=0, allow_inf_nan=False)] | None, ...]
+    ms_per_phoneme: tuple[NonNegFloat | None, ...]
     phonetic_check: PhoneticCheck
 
     @model_validator(mode="after")
