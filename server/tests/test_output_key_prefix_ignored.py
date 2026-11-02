@@ -5,7 +5,7 @@ import logging
 import httpx
 import pytest
 import yaml
-from conftest import API_KEY, valid_body
+from conftest import API_KEY, idle_worker_stats, valid_body
 from lane_helpers import REQUEST_ID, audio_result, video_result, worker_settings
 from test_contract import CONTRACT_PATH
 
@@ -67,7 +67,13 @@ async def test_keys_ignore_a_foreign_request_prefix(stubbed_pipeline, tmp_path):
 
 async def test_request_with_prefix_is_accepted_over_http(stubbed_pipeline, tmp_path, redis):
     # criterion 23: no 400, keys under the default prefix
-    app = create_app(worker_settings(tmp_path), redis=redis, processor=pipeline_processor)
+    app = create_app(
+        worker_settings(tmp_path),
+        redis=redis,
+        processor=pipeline_processor,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:

@@ -67,6 +67,9 @@ def worker_settings(tmp_path: Path, **overrides: Any) -> Settings:
         "scratch_dir": tmp_path / "scratch",
         "audio_worker_url": "http://audio.test:8001",
         "video_worker_url": "http://video.test:8002",
+        "stage_estimate_download_seconds": 0,
+        "stage_estimate_upload_seconds": 0,
+        "stage_estimate_lane_seconds": 0.001,
     }
     values.update(overrides)
     return Settings(_env_file=None, api_key=API_KEY, **values)  # type: ignore[call-arg]

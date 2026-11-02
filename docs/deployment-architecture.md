@@ -108,7 +108,7 @@ One on-demand GPU instance, run only during sessions, with Docker Compose managi
 | Networking | Elastic IP and a domain name; Caddy gets a Let's Encrypt certificate. Only ports 80 and 443 are open |
 | Auth | `X-API-Key` checked in the API; the key lives in AWS Secrets Manager or SSM Parameter Store, not in the image |
 | Region | ap-southeast-1 (Singapore), same region as the S3 bucket |
-| Scheduling | Start and stop manually or with a small script; an idle check stops the instance after 30 minutes with no requests |
+| Scheduling | Start and stop manually or with a small script; an idle check stops the instance after 30 minutes with no requests (it reads `last_request_at`, or `started_at` if null, from the server's `/health/live`) |
 
 Decisions behind these choices:
 

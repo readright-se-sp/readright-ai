@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from conftest import API_KEY, SIGNATURE, valid_body
+from conftest import API_KEY, SIGNATURE, idle_worker_stats, valid_body
 from lane_helpers import audio_result, video_result
 from pydantic import ValidationError
 
@@ -33,6 +33,9 @@ def real_settings(tmp_path: Path, **overrides) -> Settings:
         _env_file=None,
         api_key=API_KEY,
         scratch_dir=tmp_path / "scratch",
+        stage_estimate_download_seconds=0,
+        stage_estimate_upload_seconds=0,
+        stage_estimate_lane_seconds=0.001,
         **overrides,
     )
 
@@ -72,7 +75,7 @@ def test_setting_max_video_bytes_must_be_positive(value):
 
 
 async def _processor_after_startup(settings: Settings, redis):
-    app = create_app(settings, redis=redis)
+    app = create_app(settings, redis=redis, worker_stats=idle_worker_stats, dependency_checks={})
     async with app.router.lifespan_context(app):
         return app.state.processor
 
@@ -83,7 +86,13 @@ async def test_injected_processor_is_used(tmp_path, redis):
     async def mine(body, settings):
         raise AssertionError("not called")
 
-    app = create_app(real_settings(tmp_path), redis=redis, processor=mine)
+    app = create_app(
+        real_settings(tmp_path),
+        redis=redis,
+        processor=mine,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
     async with app.router.lifespan_context(app):
         assert app.state.processor is mine
 
@@ -94,7 +103,9 @@ async def test_default_processor_is_pipeline_processor(tmp_path, redis):
 
 async def test_warns_when_media_binaries_missing(tmp_path, redis, monkeypatch, caplog):
     monkeypatch.setattr("shutil.which", lambda *a, **k: None)
-    app = create_app(real_settings(tmp_path), redis=redis)
+    app = create_app(
+        real_settings(tmp_path), redis=redis, worker_stats=idle_worker_stats, dependency_checks={}
+    )
     root = logging.getLogger()
     root.addHandler(caplog.handler)  # configure_logging replaced the root handlers
     caplog.set_level(logging.DEBUG)
@@ -245,7 +256,13 @@ def settings(tmp_path) -> Settings:
 @pytest.fixture
 def app(settings, redis):
     """Overrides the conftest fixture: the real pipeline processor (lanes are monkeypatched)."""
-    return create_app(settings, redis=redis, processor=pipeline_processor)
+    return create_app(
+        settings,
+        redis=redis,
+        processor=pipeline_processor,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
 
 
 @pytest.fixture

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from conftest import valid_body
+from conftest import idle_worker_stats, valid_body
 from lane_helpers import REQUEST_ID, audio_result, video_result, worker_settings
 
 from app import pipeline
@@ -260,7 +260,13 @@ def deadline_settings(tmp_path):
 
 @pytest.fixture
 def pipeline_app(deadline_settings, redis):
-    return create_app(deadline_settings, redis=redis, processor=pipeline_processor)
+    return create_app(
+        deadline_settings,
+        redis=redis,
+        processor=pipeline_processor,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
 
 
 @pytest.fixture

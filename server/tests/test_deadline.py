@@ -23,6 +23,9 @@ def settings() -> Settings:
         api_key=API_KEY,
         request_deadline_seconds=0.3,
         in_progress_ttl_seconds=130,
+        stage_estimate_download_seconds=0,
+        stage_estimate_upload_seconds=0,
+        stage_estimate_lane_seconds=0.001,
     )
 
 

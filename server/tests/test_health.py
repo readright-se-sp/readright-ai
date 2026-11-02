@@ -1,4 +1,5 @@
 import fakeredis.aioredis
+from conftest import idle_worker_stats
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -7,7 +8,7 @@ from app.main import create_app
 def test_live(client):
     response = client.get("/health/live")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
 
 
 def test_ready(client):
@@ -18,7 +19,12 @@ def test_ready(client):
 
 def test_ready_when_redis_is_down(settings, redis_server):
     redis_server.connected = False
-    app = create_app(settings, redis=fakeredis.aioredis.FakeRedis(server=redis_server))
+    app = create_app(
+        settings,
+        redis=fakeredis.aioredis.FakeRedis(server=redis_server),
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get("/health/ready")
     assert response.status_code == 503

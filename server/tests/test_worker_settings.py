@@ -3,7 +3,7 @@
 import importlib.util
 
 import pytest
-from conftest import API_KEY, fake_processor, valid_body
+from conftest import API_KEY, fake_processor, idle_worker_stats, valid_body
 from pydantic import ValidationError
 
 import app.main
@@ -50,7 +50,13 @@ def test_pipeline_mode_setting_is_removed(monkeypatch):
 @pytest.mark.anyio
 async def test_injected_processor_becomes_app_state_processor(settings, redis):
     """criterion 2"""
-    app_ = create_app(settings, redis=redis, processor=fake_processor)
+    app_ = create_app(
+        settings,
+        redis=redis,
+        processor=fake_processor,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
     async with app_.router.lifespan_context(app_):
         assert app_.state.processor is fake_processor
 
@@ -58,7 +64,7 @@ async def test_injected_processor_becomes_app_state_processor(settings, redis):
 @pytest.mark.anyio
 async def test_pipeline_processor_is_the_default_processor(settings, redis):
     """criterion 2"""
-    app_ = create_app(settings, redis=redis)
+    app_ = create_app(settings, redis=redis, worker_stats=idle_worker_stats, dependency_checks={})
     async with app_.router.lifespan_context(app_):
         assert app_.state.processor is pipeline_processor
 

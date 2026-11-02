@@ -37,6 +37,8 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 - `upload.py`: `upload_clips()` (boto3 in threads, bounded concurrency, errors to `UPLOAD_FAILED`).
 - `pipeline.py`: `pipeline_processor` (download, probe, convert, both lanes in parallel, merge, upload clips).
 - `devtools/fake_workers.py` (outside `app/`): fake audio/video lane apps for local runs.
+- `admission.py`: `WorkerStats`, `estimate_finish_seconds()`, cached `/stats` source, `Admission` (in-flight cap + deadline check).
+- `readiness.py`: `worker_ready()`, `s3_ready()`, `ffmpeg_ready()`.
 - `routes/analyses.py`: `POST /v1/analyses`.
 - `routes/health.py`: `/health/live`, `/health/ready`.
 
@@ -46,9 +48,9 @@ Package `app/` at the top level (no `src/` layout, intentionally).
 - Errors: raise `MAIError(ErrorCode.X, message, details=..., retry_after=...)`. The status comes from `STATUS_BY_CODE`. Never return ad-hoc error JSON or raise a bare `HTTPException` for contract errors.
 - Validation errors become 400 `INVALID_REQUEST` and never echo input (it may contain the presigned URL signature).
 - Auth: `ApiKeyMiddleware` checks `X-API-Key` for `/v1/` paths before the body is parsed. Keep it in middleware.
-- The app is built by `create_app(settings=None, redis=None, processor=None)`; tests inject a fakeredis client and a fake processor. A lifespan sets `app.state.idempotency` (the `IdempotencyStore`) and `app.state.processor` (`async (body, settings) -> AnalysisResponse`, `pipeline_processor` unless one is injected). It creates the Redis client only if none was injected and closes only its own.
-- Idempotency: the route does lookup, claim, processor, then complete (release on any failure, including cancellation). Errors are never cached. Same `request_id` with a different body is 400. Phase 6 admission control goes between lookup and claim.
-- Readiness: register dependency checks as named async `() -> bool` callables in `app.state.readiness_checks`. Any failure (or exception) returns 503 `SERVICE_UNAVAILABLE` with `Retry-After`.
+- The app is built by `create_app(settings=None, redis=None, processor=None, worker_stats=None, dependency_checks=None)`; tests inject a fakeredis client and a fake processor. A lifespan sets `app.state.idempotency` (the `IdempotencyStore`) and `app.state.processor` (`async (body, settings) -> AnalysisResponse`, `pipeline_processor` unless one is injected). It creates the Redis client only if none was injected and closes only its own.
+- Idempotency: the route does lookup, claim, processor, then complete (release on any failure, including cancellation). Errors are never cached. Same `request_id` with a different body is 400. Admission control (`app.state.admission`) runs between lookup and claim and must keep its cap check and increment free of `await`. Run one uvicorn worker (the cap is per process).
+- Readiness: register dependency checks as named async `() -> bool` callables in `app.state.readiness_checks` (run concurrently, each bounded by `MAI_DEPENDENCY_TIMEOUT_SECONDS`). `last_request_at` / `started_at` live on `app.state` and are exposed by `/health/live`. Any failure (or exception) returns 503 `SERVICE_UNAVAILABLE` with `Retry-After`.
 - Settings use the `MAI_` prefix (pydantic-settings). Env vars override `.env` on purpose: production injects env vars.
 - Every new setting must also be added to `.env.example` and the configuration table in [README.md](README.md).
 - Logging: JSON via `app/logging.py`. Pass fields with `extra={...}`. `request_id` comes from the contextvar. Never log secrets or full URLs (host only).

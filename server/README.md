@@ -2,7 +2,7 @@
 
 The HTTP entry point of the MAI. It implements the BE ⇄ MAI contract in [`../contracts/be-mai-openapi.yaml`](../contracts/be-mai-openapi.yaml) (v1.1.1). See the [root README](../README.md) for how the whole system works.
 
-> **Current state (Phase 5):** `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) merges their results, then cuts one mini audio file per miscue and uploads it to S3 (see [Mini audio files](#mini-audio-files-s3)). A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)). An S3 bucket and AWS credentials are needed for requests with miscues.
+> **Current state (Phase 6):** `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) merges their results, then cuts one mini audio file per miscue and uploads it to S3 (see [Mini audio files](#mini-audio-files-s3)). A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)). An S3 bucket and AWS credentials are needed for requests with miscues. **Admission control** rejects work that cannot finish in time with `429 RATE_LIMITED` (`Retry-After` set), and `503 SERVICE_UNAVAILABLE` when a worker's `/stats` cannot be read.
 
 ## Prerequisites
 
@@ -85,12 +85,30 @@ Settings come from environment variables with the `MAI_` prefix, or from `.env`.
 | `AWS_REGION` | `ap-southeast-1` | Region of the bucket. No `MAI_` prefix. Credentials come from the standard AWS chain (env vars, profile or instance role), never from `.env`. |
 | `MAI_UPLOAD_CONCURRENCY` | `8` | Maximum parallel clip uploads. Must be > 0. |
 | `MAI_CLIP_PADDING_MS` | `150` | Audio added before and after each miscue span (clamped to the recording). Must be >= 0. |
+| `MAI_MAX_IN_FLIGHT` | `10` | Maximum requests in flight, per process. Must be > 0. |
+| `MAI_STAGE_ESTIMATE_DOWNLOAD_SECONDS` | `15` | Estimated download + preprocessing time. Must be >= 0. |
+| `MAI_STAGE_ESTIMATE_UPLOAD_SECONDS` | `10` | Estimated clip upload time. Must be >= 0. |
+| `MAI_STAGE_ESTIMATE_LANE_SECONDS` | `75` | Per-request lane time assumed when a worker reports no average. Must be > 0. |
+| `MAI_STATS_CACHE_SECONDS` | `1.0` | How long a worker's `/stats` answer is reused. Must be >= 0. |
+| `MAI_DEPENDENCY_TIMEOUT_SECONDS` | `2.0` | Timeout for each readiness check and the `/stats` fetch. Must be > 0. |
+
+The estimate defaults come from the deployment doc's initial time budget; tune them after the benchmark.
+
+### Admission control and readiness
+
+After the idempotency lookup (a stored result is always replayed) and before the claim, the server estimates when a new request would finish: download + the slower lane's `(queue + 1) x average` + upload, where the queue is the larger of the worker's `queue_length` and the other requests in flight on this server. If that is past the deadline, it returns `429 RATE_LIMITED` with `Retry-After`; no claim is made, so the same `request_id` can be retried. More than `MAI_MAX_IN_FLIGHT` requests in flight also gets `429`. If a worker's `/stats` is unreachable or invalid, the answer is `503 SERVICE_UNAVAILABLE`.
+
+**Run one uvicorn worker:** the in-flight cap is per process.
+
+`/health/ready` runs these checks concurrently and returns 503 listing the failed ones in `failed_checks`: `redis`, `audio_worker` and `video_worker` (`/health/ready` is 200 and `/stats` is valid), `s3` (`HeadBucket` on `MAI_S3_BUCKET`), `ffmpeg` (`ffmpeg` and `ffprobe` found).
+
+`/health/live` returns `status`, `started_at` and `last_request_at` (ISO-8601 UTC, `null` until the first `POST /v1/analyses`). The idle auto-stop script reads `last_request_at` (falling back to `started_at`); health probes never update it.
 
 ### Mini audio files (S3)
 
 After merging, the server cuts each miscue's span (plus padding) from the WAV with Python's `wave` module and uploads it to `MAI_S3_BUCKET` at its `audio_object_key`, inside the request deadline and before the result is stored. Any upload failure returns `500 UPLOAD_FAILED`. Keys are deterministic, so a retry overwrites the same objects.
 
-Required IAM permissions: `s3:PutObject` on `arn:aws:s3:::<bucket>/analyses/*` (or your `MAI_DEFAULT_OUTPUT_KEY_PREFIX` root) (and `s3:ListBucket` for the Phase 6 readiness check). Old clips can be expired with an S3 lifecycle rule on the bucket (outside the server). For local runs, set `MAI_S3_ENDPOINT_URL` to MinIO or a moto server, or leave the bucket unset (only zero-miscue requests succeed).
+Required IAM permissions: `s3:PutObject` on `arn:aws:s3:::<bucket>/analyses/*` (or your `MAI_DEFAULT_OUTPUT_KEY_PREFIX` root) and `s3:ListBucket` on the bucket (for the `HeadBucket` readiness check). Old clips can be expired with an S3 lifecycle rule on the bucket (outside the server). For local runs, set `MAI_S3_ENDPOINT_URL` to MinIO or a moto server, or leave the bucket unset (only zero-miscue requests succeed).
 
 ## Run
 
@@ -205,6 +223,8 @@ server/
 │   ├── pipeline.py      # processor: download, probe, convert, run both lanes, merge
 │   ├── workers.py       # audio/video lane clients and result models
 │   ├── merge.py         # lane results to AnalysisResponse
+│   ├── admission.py     # worker stats, estimator, in-flight cap
+│   ├── readiness.py     # worker, S3 and ffmpeg readiness checks
 │   └── routes/          # analyses.py, health.py
 ├── devtools/            # fake_workers.py: fake audio/video lanes for local runs
 ├── tests/
