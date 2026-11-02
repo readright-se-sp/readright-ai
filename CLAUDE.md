@@ -10,7 +10,7 @@ The MAI (Microservices AI) is the AI layer of ReadRight, an oral reading assessm
 ## Layout
 
 - `server/`: FastAPI entry point. See [server/CLAUDE.md](server/CLAUDE.md).
-- `audio/`: audio lane. Not started yet.
+- `audio/`: audio lane. Lane A (word lane, post-pass) and Lane B (phonetic lane, arbitration) are built by different developers; integration in progress (Phase I1). See [audio/ROADMAP.md](audio/ROADMAP.md).
 - `video/`: video lane, see [video/CLAUDE.md](video/CLAUDE.md).
 - `contracts/`: shared shapes live only here.
 - `compose.yaml` (production stack), `compose.override.yaml` (local moto S3), `Caddyfile`, `.env.example`, `scripts/` (`start-stack.sh`, `idle-check.sh`).
@@ -41,10 +41,12 @@ Each project is built in phases described in its own roadmap. Before planning or
 | Project | Roadmap |
 |---|---|
 | `server/` | [server/ROADMAP.md](server/ROADMAP.md) |
-| `audio/` | Not created yet |
+| `audio/` | [audio/ROADMAP.md](audio/ROADMAP.md) |
 | `video/` | [video/ROADMAP.md](video/ROADMAP.md) |
 
 When code or decisions change, keep [README.md](README.md), the project's README and [docs/deployment-architecture.md](docs/deployment-architecture.md) consistent with them.
+
+- Temporary: [docs/lane-b-context/](docs/lane-b-context/README.md) carries the Lane B spec, working agreements and machine setup. Read it before planning or implementing Lane B. Remove it when Lane B is done.
 
 ## Safety
 

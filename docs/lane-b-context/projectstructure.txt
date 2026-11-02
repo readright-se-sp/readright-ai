@@ -1,0 +1,46 @@
+readright-api/
+├── server/                        # HTTP entry: S3 fetch, preprocessing, fan-out, merge
+│   ├── src/
+│   │   └── server/
+│   │       ├── api/               # routes, request/response models
+│   │       ├── storage/           # S3 client
+│   │       ├── preprocessing/     # audio extraction, video normalization, passage cleanup
+│   │       ├── clients/           # callers for the audio and video services
+│   │       └── main.py
+│   ├── tests/
+│   ├── pyproject.toml
+│   └── Dockerfile
+│
+├── audio/                         # audio analysis microservice
+│   ├── src/
+│   │   └── audio/
+│   │       ├── api/
+│   │       ├── transcription/     # CrisperWhisper
+│   │       ├── alignment/         # NW + swap, repeat collapse
+│   │       ├── tagging/           # moved, self-correction, reversal, etc.
+│   │       └── main.py
+│   ├── tests/
+│   │   └── fixtures/              # sample audio + passages
+│   ├── pyproject.toml
+│   └── Dockerfile
+│
+├── video/                         # video analysis microservice
+│   ├── src/
+│   │   └── video/
+│   │       ├── api/
+│   │       ├── analysis/          # MediaPipe
+│   │       └── main.py
+│   ├── tests/
+│   │   └── fixtures/              # sample videos
+│   ├── pyproject.toml
+│   └── Dockerfile
+│
+├── contracts/                     # request/response samples and tag definitions (docs, not code)
+│   ├── server-api.md
+│   ├── audio-service.md
+│   └── video-service.md
+│
+├── scripts/                       # benchmarks, local dev helpers
+├── compose.yaml                   # server, audio, video, shared volume
+├── .env.example
+└── README.md

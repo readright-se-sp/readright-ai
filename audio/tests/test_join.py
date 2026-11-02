@@ -1,0 +1,181 @@
+import random
+
+import pytest
+from pydantic import ValidationError
+
+from audio.lane_b.join import join
+from audio.types import JoinResult, PassageToken, PhonemeToken, PreparedPassage, Unit
+
+KW = dict(pad_ms=80, coverage_min_ms=120, coverage_max_gap_ms=300)
+
+# keys: a (2 or 3 phonemes), b (1), c (2)
+PASSAGE = PreparedPassage(
+    passage_hash="h",
+    tokens=tuple(PassageToken(index=i, raw=k, key=k) for i, k in enumerate("abcd")),
+    pronunciations={
+        "a": (("k", "æ", "t"), ("k", "æ")),
+        "b": (("x",),),
+        "c": (("s", "i"),),
+        "d": (("d", "ɔ"), ("d", "ɔ", "g")),
+    },
+)
+
+
+def unit(start, end, idx=0, span=1, src=(0,), key="a"):
+    return Unit(
+        surface=key if src else "",
+        key=key,
+        passage_index=idx,
+        passage_span=span if idx is not None else 0,
+        source_indices=src,
+        start_ms=start,
+        end_ms=end,
+        align_score=1.0,
+    )
+
+
+def untimed(idx=0):
+    return Unit(
+        surface="a",
+        key="a",
+        passage_index=idx,
+        passage_span=1,
+        source_indices=(0,),
+        start_ms=None,
+        end_ms=None,
+        align_score=0.0,
+    )
+
+
+def ph(start, end, sym="k"):
+    return PhonemeToken(symbol=sym, start_ms=start, end_ms=end, confidence=0.9)
+
+
+def run(units, phonemes, **kw):
+    return join(units, phonemes, PASSAGE, **{**KW, **kw})
+
+
+def test_inside_padding_and_outside():
+    u = [unit(1000, 2000)]
+    inside, padded, outside = ph(1400, 1420), ph(2040, 2060), ph(2150, 2170)
+    r = run(u, [inside, padded, outside])
+    assert r.unit_phonemes == ((inside, padded),)
+    assert r.discarded == (outside,)  # 20 ms run, shorter than the minimum
+
+
+def test_window_edges_inclusive():
+    r = run([unit(1000, 2000)], [ph(2070, 2090)])
+    assert len(r.unit_phonemes[0]) == 1
+    r = run([unit(1000, 2000)], [ph(2071, 2091)])  # mid 2081
+    assert r.unit_phonemes[0] == ()
+
+
+def test_nearer_edge_beats_nearer_centre():
+    a, b = unit(0, 1000), unit(1100, 1200, idx=1, key="b")
+    p = ph(1030, 1050)  # mid 1040: edge 40 from a, 60 from b; centre 110 from b, 540 from a
+    r = run([a, b], [p])
+    assert r.unit_phonemes == ((p,), ())
+
+
+def test_unpadded_containment_wins():
+    a, b = unit(1000, 2000), unit(2050, 3000, idx=1, key="b")
+    p = ph(1980, 2000)  # mid 1990: inside a, only in b's padding
+    r = run([a, b], [p])
+    assert r.unit_phonemes == ((p,), ())
+
+
+def test_tie_goes_to_lower_index():
+    a, b = unit(1000, 1100), unit(1160, 1260, idx=1, key="b")
+    p = ph(1120, 1140)  # mid 1130: 30 from both edges, 80 from both centres
+    assert run([a, b], [p]).unit_phonemes == ((p,), ())
+
+
+def test_untimed_unit_gets_nothing():
+    r = run([untimed(), unit(5000, 5100, idx=1, key="b")], [ph(0, 20)])
+    assert r.unit_phonemes[0] == ()
+    assert r.ms_per_phoneme[0] is None
+
+
+def test_timed_omission_receives_phonemes():
+    om = unit(1000, 1500, idx=1, src=(), key="b")
+    ps = [ph(1100, 1200), ph(1200, 1300)]
+    r = run([om], ps)
+    assert r.unit_phonemes == (tuple(ps),)
+    assert r.ms_per_phoneme == (None,)
+
+
+def test_run_length_threshold():
+    ok = run([], [ph(5000, 5060), ph(5060, 5120)])
+    assert len(ok.coverage_candidates) == 1 and ok.discarded == ()
+    c = ok.coverage_candidates[0]
+    assert (c.start_ms, c.end_ms) == (5000, 5120)
+    short = run([], [ph(5000, 5060), ph(5060, 5119)])
+    assert short.coverage_candidates == () and len(short.discarded) == 2
+
+
+def test_silence_splits_runs():
+    a, b, c, d = ph(5000, 5060), ph(5060, 5120), ph(5421, 5481), ph(5481, 5541)
+    r = run([], [a, b, c, d])  # gap 301
+    assert [x.phonemes for x in r.coverage_candidates] == [(a, b), (c, d)]
+    r = run([], [a, b, ph(5420, 5480), ph(5480, 5540)])  # gap 300: one run
+    assert len(r.coverage_candidates) == 1
+    # each run is judged on its own: short first run is dropped, long second kept
+    r = run([], [ph(5000, 5060), c, d])
+    assert len(r.coverage_candidates) == 1 and len(r.discarded) == 1
+
+
+def test_after_passage_index():
+    units = [
+        unit(3000, 3200, idx=0),
+        unit(3500, 3900, idx=1, span=2, key="b"),
+        unit(4000, 4100, idx=None),  # insertion: ignored
+    ]
+    before, after = [ph(0, 150)], [ph(5000, 5200)]
+    r = run(units, before + after)
+    assert [c.after_passage_index for c in r.coverage_candidates] == [None, 2]
+
+
+def test_ms_per_phoneme():
+    # token a: shortest variant 2; token b: 1 -> expected 3
+    matched = unit(1000, 1300, idx=0, span=2, src=(0, 1))
+    ins = unit(2000, 2100, idx=None, src=(2,))
+    r = run([matched, ins], [])
+    assert r.ms_per_phoneme == (100.0, None)
+
+
+def test_every_phoneme_exactly_once():
+    units = [unit(1000, 1500), untimed(1), unit(3000, 3400, idx=2, key="c")]
+    ps = [
+        ph(1000, 1050),
+        ph(1500, 1540),
+        ph(1600, 1660),  # run of 60 ms -> discarded
+        ph(2000, 2100),
+        ph(2100, 2250),  # run -> candidate
+        ph(3100, 3150),
+        ph(9000, 9010),
+    ]
+    r = run(units, ps)
+    out = [p for g in r.unit_phonemes for p in g]
+    out += [p for c in r.coverage_candidates for p in c.phonemes] + list(r.discarded)
+    assert sorted(out, key=lambda p: p.start_ms) == sorted(ps, key=lambda p: p.start_ms)
+    assert len(r.coverage_candidates) == 1 and len(r.discarded) >= 2
+
+
+def test_empty_phonemes():
+    r = run([unit(1000, 1300, idx=0, span=2, src=(0, 1)), untimed(2)], [])
+    assert r.unit_phonemes == ((), ())
+    assert r.coverage_candidates == () and r.discarded == ()
+    assert r.ms_per_phoneme == (100.0, None)
+
+
+def test_unsorted_equals_sorted():
+    units = [unit(1000, 1500), unit(2000, 2400, idx=1, key="b")]
+    ps = [ph(1000 + 50 * i, 1040 + 50 * i) for i in range(40)]
+    shuffled = ps[:]
+    random.Random(1).shuffle(shuffled)
+    assert run(units, ps) == run(units, shuffled)
+
+
+def test_join_result_rejects_mismatched_lengths():
+    with pytest.raises(ValidationError):
+        JoinResult(unit_phonemes=((),), coverage_candidates=(), discarded=(), ms_per_phoneme=())
