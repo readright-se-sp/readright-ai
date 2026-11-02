@@ -45,6 +45,8 @@ Each project is built in phases described in its own roadmap. Before planning or
 
 When code or decisions change, keep [README.md](README.md), the project's README and [docs/deployment-architecture.md](docs/deployment-architecture.md) consistent with them.
 
+- Temporary: [docs/lane-b-context/](docs/lane-b-context/README.md) carries the Lane B spec, working agreements and machine setup. Read it before planning or implementing Lane B. Remove it when Lane B is done.
+
 ## Safety
 
 - Never read, print or modify `.env` files or API key values. `.env.example` is fine.
