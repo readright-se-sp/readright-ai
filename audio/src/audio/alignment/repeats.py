@@ -1,4 +1,7 @@
+from audio.alignment.text import word_distance
 from audio.models import AlignedItem, Column, Repeat, Swap, Token
+
+_TRY_BELOW = 0.5  # an extra word this close to the next passage word was a try at it ('cant' ~ 'cannot')
 
 
 class RepeatFolder:
@@ -24,13 +27,14 @@ class RepeatFolder:
                 end += 1
             reps = columns[i:end]
             prior = self._take_stretch(out, min(c.p for c in reps if c.p is not None))
-            repeat = self._repeat(prior, reps, passage)
+            nxt = columns[end] if end < len(columns) else None
+            repeat, took_next = self._repeat(prior, reps, passage, nxt)
             pair = self._crossed_pair(reps)
             if pair is None:
                 out.append(repeat)
             else:
                 out.extend(self._split_swap(repeat, *pair))
-            i = end
+            i = end + took_next
         return out
 
     @staticmethod
@@ -85,7 +89,13 @@ class RepeatFolder:
         return Repeat(tuple(heard), tuple(columns), tuple(tries))
 
     @staticmethod
-    def _repeat(prior: Repeat, reps: list[Column], passage: list[str]) -> Repeat:
+    def _repeat(prior: Repeat, reps: list[Column], passage: list[str], nxt: Column | None) -> tuple[Repeat, bool]:
+        """The Repeat, and whether it took in `nxt` (the column after the re-read).
+
+        An extra word that looks like the passage word after the re-read was a first try at it
+        ('I can't, I, I cannot': 'cant' tried 'cannot'): it becomes that word's attempt, not a word
+        added between the copies, so the copies of 'I' stay a repetition.
+        """
         stretch = prior.columns
         old_tries = {c.p: t for c, t in zip(stretch, prior.tries) if c.p is not None}
         readings: dict[int, list[Token]] = {c.p: [] for c in stretch if c.p is not None}
@@ -115,6 +125,15 @@ class RepeatFolder:
             same.extend(t for t in earlier if t.norm == last.norm)
             tries.append((*old_tries[c.p], *(t.norm for t in earlier if t.norm != last.norm)))
             words.append(Column("match" if last.norm == passage[c.p] else "sub", c.p, last))
+        took_next = False
+        if nxt is not None and nxt.op in ("match", "sub") and nxt.p is not None and nxt.h is not None:
+            target = passage[nxt.p]
+            ahead = [t for t in extra if word_distance(t.norm, target) < _TRY_BELOW]
+            if ahead:
+                extra = [t for t in extra if t not in ahead]
+                words.append(nxt)
+                tries.append(tuple(t.norm for t in ahead))
+                took_next = True
         # A repetition is said again straight away. With words added in between, the earlier
         # copy isn't repeated, it's extra words: insertions ('I and' in 'I… and I will').
         if extra:
@@ -122,6 +141,7 @@ class RepeatFolder:
         else:
             heard += same
         inserted = [Column("ins", None, t) for t in sorted(extra, key=lambda t: t.id)]
-        return Repeat(
+        repeat = Repeat(
             tuple(sorted(heard, key=lambda t: t.id)), (*inserted, *words), ((),) * len(inserted) + tuple(tries)
         )
+        return repeat, took_next
