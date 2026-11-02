@@ -10,7 +10,7 @@ The video lane is built in 7 phases. Each phase below says what to build, the in
 | 2 | Frame decoding (ffprobe + ffmpeg) | Done |
 | 3 | MediaPipe landmarks and models | Done |
 | 4 | Packaging and compose | Done |
-| 5 | Lack of expression | Not started |
+| 5 | Lack of expression | Done |
 | 6 | Finger pointing | Not started |
 | 7 | Calibration, benchmark and docs | Not started |
 
@@ -363,7 +363,16 @@ class JobRunner:
 
 **Done when.** The criteria pass and the README explains the check in plain words.
 
-**Decisions.** (filled in when the phase is done)
+**Decisions.**
+- Missing face data → `False` with `reason="insufficient_face"` (not an error).
+- Head movement does not count as expression in v1.
+- Global `EXPRESSION_MIN_RANGE` plus optional per-group overrides (`EXPRESSION_GROUP_MIN_RANGE`, values 0-1, unknown groups rejected).
+- A frame with none of a group's members is skipped for that group; a group with no values has variability 0.0.
+- Rolling-median edges use the truncated window (`np.median`); threshold comparison is strict `<` (equal counts as expressive).
+- `expr_var_<group>` stats are logged only when face data is sufficient; `face_coverage`, `face_frames`, `expression_reason` always.
+- The group-name set lives in `config.py` (`EXPRESSION_GROUP_NAMES`) to avoid an import cycle via `landmarks.py`; `expression.py` raises at import if it differs from `EXPRESSION_GROUPS`.
+- Non-finite blendshape scores are dropped like missing members.
+- `EXPRESSION_SMOOTH_FRAMES` must not exceed `EXPRESSION_MIN_FACE_FRAMES` (startup error), so the window can never flatten a whole series.
 
 ---
 

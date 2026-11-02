@@ -1,7 +1,11 @@
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+EXPRESSION_GROUP_NAMES = frozenset(
+    {"brow_raise", "brow_down", "smile", "frown", "squint", "eye_wide", "sneer"}
+)
 
 
 class Settings(BaseSettings):
@@ -21,3 +25,32 @@ class Settings(BaseSettings):
     model_dir: Path = Path("models")
     num_hands: int = Field(default=2, ge=1, le=4)
     use_pose: bool = False
+    expression_min_face_coverage: float = Field(default=0.5, ge=0, le=1)
+    expression_min_face_frames: int = Field(default=20, ge=1)
+    expression_smooth_frames: int = Field(default=3, ge=1)
+    expression_min_range: float = Field(default=0.12, ge=0, le=1)
+    expression_group_min_range: dict[str, float] = {}
+
+    @field_validator("expression_smooth_frames")
+    @classmethod
+    def _smooth_frames_odd(cls, v: int) -> int:
+        if v % 2 == 0:
+            raise ValueError("must be odd")
+        return v
+
+    @field_validator("expression_group_min_range")
+    @classmethod
+    def _group_ranges_valid(cls, v: dict[str, float]) -> dict[str, float]:
+        unknown = set(v) - EXPRESSION_GROUP_NAMES
+        if unknown:
+            raise ValueError(f"unknown expression groups: {sorted(unknown)}")
+        if any(not 0 <= x <= 1 for x in v.values()):
+            raise ValueError("values must be between 0 and 1")
+        return v
+
+    @model_validator(mode="after")
+    def _smooth_window_fits(self) -> "Settings":
+        # A window wider than the shortest accepted series flattens every recording.
+        if self.expression_smooth_frames > self.expression_min_face_frames:
+            raise ValueError("expression_smooth_frames must not exceed expression_min_face_frames")
+        return self

@@ -27,7 +27,8 @@ Package `app/` at the top level (no `src/` layout, same as `server/`).
 - `analyzer.py`: `Analyzer` protocol, `JobContext`, `JobCancelled`, `MediaPipeAnalyzer`.
 - `frames.py`: `probe`, `plan_sampling`, `iter_frames` (ffprobe/ffmpeg to RGB frames).
 - `landmarks.py`: `models.lock` reading/hashing, `ModelBundle`, `LandmarkerSession`, result mapping to `FrameFeatures`.
-- `decision.py`: `decide()` turns the feature series into flags and stats (false/false until Phases 5-6).
+- `expression.py`: `assess_expression()` decides lack of expression from face blendshape groups.
+- `decision.py`: `decide()` turns the feature series into flags and stats (expression decided; finger pointing false until Phase 6).
 - `jobs.py`: `JobRunner` (concurrency limit, queue, disconnect polling, stats).
 - `logging.py`: JSON logs, `job_id_var`.
 - `Dockerfile`, `.dockerignore`: the lane image (models baked in at build time via `devtools.fetch_models`; only `fetch_models` is copied into it).

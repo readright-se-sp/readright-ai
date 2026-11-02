@@ -140,7 +140,7 @@ The audio path is settled except for the model size and backend; the video path 
 
 ### Video path (MediaPipe on CPU)
 
-The video worker runs the MediaPipe face and hand landmarkers on CPU, limited by `MAI_VIDEO_CPUS` (default 4 of the instance's 8 vCPUs). The model files are downloaded and hash-checked at image build time (`models.lock`), so the container needs no network at start. The flags are still `false/false` until the decision phases land.
+The video worker runs the MediaPipe face and hand landmarkers on CPU, limited by `MAI_VIDEO_CPUS` (default 4 of the instance's 8 vCPUs). The model files are downloaded and hash-checked at image build time (`models.lock`), so the container needs no network at start. Lack of expression is decided from the face blendshapes; finger pointing is still `false` until Phase 6.
 
 The worker is a separate container with the same internal interface as the audio worker (job in, result out, deadline attached), so any model can be swapped in without touching the server. Choose the models against these criteria:
 
