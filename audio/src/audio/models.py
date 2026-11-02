@@ -26,7 +26,7 @@ ReadingLevel: TypeAlias = Literal["Independent", "Instructional", "Frustration"]
 ColumnOp: TypeAlias = Literal["match", "sub", "del", "ins", "rep", "swp", "mid", "off"]
 
 # Bump with any change to the response shape (contracts/audio-service.md).
-CONTRACT_VERSION = "3"
+CONTRACT_VERSION = "4"
 
 # Phil-IRI 2018 counted miscues. Everything else is recorded but never scored.
 COUNTED_TAGS: frozenset[Tag] = frozenset(
@@ -57,7 +57,8 @@ class AlignedWord(TypedDict):
     """One output row: (passage_word, spoken_word, start, end, tag, move_id) + bookkeeping.
 
     passage_word None = only spoken (insertion, repetition, filler, heard half of a move).
-    spoken_word/start/end None = skipped (omission, passage half of a move).
+    spoken_word None = skipped (omission, passage half of a move). An omission's start/end is where the
+    word should have been read (alignment/detection.place_omissions); the passage half of a move is untimed.
     swap/moved: one row per word, all rows of one move share move_id, only the first is counted.
     A repeated phrase is one row, words space-joined. Every passage index is in exactly one row.
     """

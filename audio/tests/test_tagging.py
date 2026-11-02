@@ -1,4 +1,5 @@
 from audio.alignment.labels import WordLabeler
+from audio.alignment.text import guess_proper_nouns
 from audio.models import AlignedWord, Tag, new_row
 from audio.pipeline import AudioPipeline
 from audio.tagging.attempts import AttemptJudge
@@ -12,7 +13,9 @@ def test_labeler_rules() -> None:
     assert lab.label("chloroplasts", "chloroplast", _NONE) == ("mispronunciation", "ending")
     assert lab.label("coast", "cost", _NONE).tag == "mispronunciation"
     assert lab.label("bench", "chair", _NONE).tag == "substitution"
-    assert lab.label("anansi", "nancy", frozenset({"anansi"})) == ("match", "proper_noun")
+    # A name matches only a same-sounding spelling (the ASR doesn't know names); a real misreading counts.
+    assert lab.label("anansi", "anancy", frozenset({"anansi"})) == ("match", "proper_noun")
+    assert lab.label("anansi", "nancy", frozenset({"anansi"})).tag != "match"
 
 
 def test_lane_a_rows_have_the_planned_shape(lane: AudioPipeline) -> None:
@@ -25,7 +28,88 @@ def test_lane_a_rows_have_the_planned_shape(lane: AudioPipeline) -> None:
     ]
     words = lane.analyze(spoken("the dog"), "the small dog")["words"]
     assert words[1]["passage_word"] == "small" and words[1]["spoken_word"] is None
-    assert words[1]["start"] is None and words[1]["tag"] == "omission"
+    assert words[1]["tag"] == "omission"
+    # Omissions get the time where the word should have been: between 'the' and 'dog'.
+    assert (words[1]["start"], words[1]["end"]) == (words[0]["end"], words[2]["start"])
+
+
+def test_skipped_words_share_the_gap_by_letter_count(lane: AudioPipeline) -> None:
+    words = lane.analyze(spoken("it the table"), "it went up the table")["words"]
+    went, up = words[1], words[2]
+    assert (went["tag"], up["tag"]) == ("omission", "omission")
+    assert went["start"] == words[0]["end"] and up["end"] == words[3]["start"] and went["end"] == up["start"]
+    assert round(went["end"] - went["start"], 3) == round(2 * (up["end"] - up["start"]), 3)  # 4 letters vs 2
+
+
+def test_names_are_guessed_from_capitals_when_none_are_given() -> None:
+    passage = "Every Saturday, Manuel goes to market with his father, Mang Ador. “This is it,” he said."
+    assert set(guess_proper_nouns(passage)) == {"saturday", "manuel", "mang", "ador"}  # not 'every', 'this'
+
+
+def test_a_name_forgives_only_a_same_sounding_spelling(lane: AudioPipeline) -> None:
+    """No list given: 'Jacky' is guessed. The ASR's 'Jackie' matches; real misreadings count (no Phil-IRI exception)."""
+    tags = {}
+    for heard in ("Jackie", "Jack", "Bob"):
+        rows = lane.analyze(spoken(f"But {heard} did not get up."), "But Jacky did not get up.")["words"]
+        tags[heard] = next(w for w in rows if w["passage_word"] == "jacky")["tag"]
+    assert tags == {"Jackie": "match", "Jack": "mispronunciation", "Bob": "substitution"}
+
+
+def test_proper_noun_covers_its_possessive(lane: AudioPipeline) -> None:
+    """'Tinoy' covers "Tinoy's": a same-sounding spelling of the possessive ('Tinoi's') matches."""
+    rows = lane.analyze(spoken("go to Mang Tinoi's for fish"), "go to Mang Tinoy’s for fish", ["Mang Tinoy"])["words"]
+    assert next(w for w in rows if w["passage_word"] == "tinoys")["tag"] == "match"
+    # Dropping the 's is a real misreading (an ending), not forgiven because it's a name.
+    rows = lane.analyze(spoken("go to Mang Tinoy for fish"), "go to Mang Tinoy’s for fish", ["Mang Tinoy"])["words"]
+    assert next(w for w in rows if w["passage_word"] == "tinoys")["tag"] == "mispronunciation"
+
+
+def test_name_asr_wrote_as_one_close_word_is_split_into_the_passage_words(lane: AudioPipeline) -> None:
+    """Real recording: "Mang Tinoy's" transcribed as 'Montenoy's'. Each word gets its own piece of audio."""
+    passage = "They go to Mang Tinoy’s for fresh vegetables."
+    heard = "They go to Montenoy's for fresh vegetables."
+    rows = lane.analyze(spoken(heard), passage)["words"]
+    mang, tinoys = (next(w for w in rows if w["passage_word"] == p) for p in ("mang", "tinoys"))
+    assert (mang["spoken_word"], tinoys["spoken_word"]) == ("mon", "tenoys")
+    assert mang["start"] is not None and mang["end"] == tinoys["start"]
+    # Names don't forgive these: "mon"/"tenoys" don't sound like mang/tinoys (the phonetic lane will judge).
+    assert lane.analyze(spoken(heard), passage, ["Mang Tinoy"])["score"]["error_count"] == 2
+
+
+def test_word_the_asr_cut_in_pieces_is_one_reading(lane: AudioPipeline) -> None:
+    """Real recording: "Juaning's" transcribed as 'Jo ang'. One misreading, not an insertion + a substitution."""
+    passage = "They always pass by Aling Juaning’s stall to buy meat."
+    heard = "They always pass by Aling Jo ang stall to buy meat."
+    rows = lane.analyze(spoken(heard), passage)["words"]
+    assert [(w["tag"], w["passage_word"], w["spoken_word"]) for w in rows if w["tag"] != "match"] == [
+        ("substitution", "juanings", "joang"),
+    ]
+    assert lane.analyze(spoken(heard), passage, ["Aling Juaning"])["score"]["error_count"] == 1
+
+
+def test_split_only_considers_the_words_where_the_heard_word_sits(lane: AudioPipeline) -> None:
+    """Real recording: 'village' for 'visit' must not be cut up to match 'will have' in another sentence."""
+    passage = "They also visit Aling Tita’s seafood section. He will have fish for lunch."
+    rows = lane.analyze(spoken("They also village Aling Tita's seafood section. He will have fish for lunch."), passage)["words"]
+    assert [(w["tag"], w["passage_word"], w["spoken_word"]) for w in rows if w["tag"] != "match"] == [
+        ("substitution", "visit", "village"),
+    ]
+
+
+def test_split_and_merge_never_hide_a_skip_or_an_extra_word(lane: AudioPipeline) -> None:
+    rows = lane.analyze(spoken("They go to Tinoy's for fish."), "They go to Mang Tinoy’s for fish.")["words"]
+    assert [(w["tag"], w["passage_word"]) for w in rows if w["tag"] != "match"] == [("omission", "mang")]
+    rows = lane.analyze(spoken("the big dog ran"), "the dog ran")["words"]
+    assert [(w["tag"], w["spoken_word"]) for w in rows if w["tag"] != "match"] == [("insertion", "big")]
+
+
+def test_any_hum_reads_a_hum_in_the_passage(lane: AudioPipeline) -> None:
+    """Real recording: the child said 'um' for 'Mmm, Cheese!'. It's the reading, not a filler."""
+    for hum in ("Um", "[UM]", "Hmm", "Mmm"):
+        rows = lane.analyze(spoken(f"the table. {hum}, cheese!"), "the table. Mmm, Cheese!")["words"]
+        assert all(w["tag"] == "match" for w in rows), hum
+    rows = lane.analyze(spoken("the um table. Mmm, cheese!"), "the table. Mmm, Cheese!")["words"]
+    assert [(w["tag"], w["spoken_word"]) for w in rows if w["tag"] != "match"] == [("filler", "um")]
 
 
 def test_reversal_is_tagged_in_post_pass(lane: AudioPipeline) -> None:

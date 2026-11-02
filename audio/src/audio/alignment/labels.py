@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from audio.alignment.text import word_distance
+from audio.alignment.text import is_hum, is_proper_noun, sound_key, word_distance
 from audio.models import EventDetail, Tag
 
 _ENDINGS = ("s", "es", "ed", "d", "ing")
@@ -25,10 +25,15 @@ class WordLabeler:
         self._mispronunciation_below = mispronunciation_below
 
     def base(self, expected: str, heard: str, proper_nouns: frozenset[str]) -> WordLabel:
-        """Alignment tag: match or substitution. Any reading of a proper noun is a match."""
-        if heard == expected:
+        """Alignment tag: match or substitution. Any hum reads a hum ('um' for 'Mmm').
+
+        A name (or its possessive: 'Tinoy' covers "Tinoy's") matches only a SAME-SOUNDING spelling:
+        the ASR doesn't know names ('Jackie' for 'Jacky'). A real misreading of a name counts like any
+        other word (Phil-IRI has no name exception): 'Jack' -> mispronunciation, 'Bob' -> substitution.
+        """
+        if heard == expected or (is_hum(heard) and is_hum(expected)):
             return WordLabel("match", None)
-        if expected in proper_nouns:
+        if is_proper_noun(expected, proper_nouns) and sound_key(heard) == sound_key(expected):
             return WordLabel("match", "proper_noun")
         return WordLabel("substitution", None)
 

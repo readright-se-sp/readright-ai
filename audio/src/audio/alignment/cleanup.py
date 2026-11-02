@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from audio.alignment.text import normalize
+from audio.alignment.text import is_hum, normalize
 from audio.models import AlignedWord, SideEvent, SpokenWord, Token, new_row
 
 _FILLERS = frozenset({"um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "hm", "mm", "mhm", "eh"})
@@ -38,15 +38,21 @@ class TranscriptCleaner:
         self._max_join = max_join
 
     def clean(self, words: list[SpokenWord], passage: list[str]) -> CleanTranscript:
-        """Never drops a word that's in the passage, so real reading is never lost."""
+        """Never drops a word that's in the passage, so real reading is never lost.
+
+        A passage with a hum ('Mmm, Cheese!') keeps every hum-like sound (um, [UM], hmm) as a
+        token: it may be the reading of that word. Ones the aligner doesn't pair with it become
+        fillers again (alignment/detection.py).
+        """
         vocab = frozenset(passage)
+        keep_hums = any(is_hum(w) for w in passage)
         pieces = self._split_joined_words(self._join_split_words(self._expand(words), vocab), passage)
         tokens: list[Token] = []
         side: list[SideEvent] = []
         pending: list[AlignedWord] = []
         for i, piece in enumerate(pieces):
             nxt = pieces[i + 1].norm if i + 1 < len(pieces) else None
-            noise = self._noise_kind(piece, nxt, vocab)
+            noise = None if keep_hums and is_hum(piece.norm) else self._noise_kind(piece, nxt, vocab)
             if noise is not None:
                 pending.append(new_row(noise, spoken=[piece.norm], start=piece.start, end=piece.end))
                 continue
@@ -86,7 +92,9 @@ class TranscriptCleaner:
         return out
 
     def _split_joined_words(self, pieces: list[_Piece], passage: list[str]) -> list[_Piece]:
-        """CrisperWhisper writes 'Mang Ador' as 'Mangador'. Split back if it's 2+ adjacent passage words."""
+        """CrisperWhisper writes 'Mang Ador' as 'Mangador'. Split back if it's exactly 2+ adjacent passage
+        words; near-joins ('Montenoy's') are the aligner's split move, which knows where the word sits.
+        """
         vocab = frozenset(passage)
         compounds: dict[str, list[str]] = {}
         for n in range(2, self._max_join + 1):

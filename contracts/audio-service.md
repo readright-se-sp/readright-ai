@@ -12,7 +12,7 @@ What the server sends the audio service, what comes back, and what every tag mea
 |---|---|---|
 | `wav_path` | string | Path on the shared volume. 16 kHz mono WAV, already extracted by the server. |
 | `passage_text` | string | The passage exactly as shown to the student. Punctuation and case are fine; the service normalizes them. |
-| `proper_nouns` | string[] | Optional. Names in the passage (`"Mang Ador"`, `"Aling Tita"`). Any reading of these words counts as a match. |
+| `proper_nouns` | string[] | Optional. Names in the passage (`"Mang Ador"`, `"Aling Tita"`). If none are given, they're guessed from the passage: capitalised words that don't start a sentence or a quote. A name, including its possessive (`"Tinoy"` covers "Tinoy's"), only forgives a **same-sounding spelling** ("Jackie" for "Jacky"), because the ASR doesn't know names. A real misreading of a name counts like any other word (Phil-IRI has no name exception): "Jack" for "Jacky" is a mispronunciation, "Bob" a substitution. The aligner also pairs a heard word with a name more readily, so a misread name is one misreading, not an omission plus an insertion. |
 
 An empty `passage_text` is an error.
 
@@ -20,7 +20,7 @@ An empty `passage_text` is an error.
 
 ```json
 {
-  "version": "3",
+  "version": "4",
   "words": [ /* rows, in reading order (see below) */ ],
   "score": {
     "counts": { "match": 9, "mispronunciation": 1, "substitution": 0, "omission": 0, "insertion": 1,
@@ -44,7 +44,7 @@ The README defines the core of each row as `(passage_word, spoken_word, start, e
 |---|---|---|
 | `passage_word` | string \| null | Normalized passage word (lowercase, no punctuation). `null` when the words were only spoken. |
 | `spoken_word` | string \| null | Normalized heard word. `null` when the passage word was skipped. A repeated phrase is one row with its words joined by spaces (`"they can"`). |
-| `start`, `end` | number \| null | Seconds from the start of the recording. `null` when nothing was heard. |
+| `start`, `end` | number \| null | Seconds from the start of the recording. For an `omission`, it's the span where the word should have been read (see Tags). `null` for the passage half of a moved word, or when the recording has no timing. |
 | `tag` | string | See [Tags](#tags). |
 | `move_id` | int \| null | Links the rows of one `swap` or `moved`. Numbered from 1 within a response. |
 | `counted` | bool | `true` if this row is one Phil-IRI error. A swap or move is several rows but counts once, so only its first row is `true`. |
@@ -67,7 +67,7 @@ These are the tags listed in the README. They come from the Needleman–Wunsch a
 |---|---|---|---|---|
 | `match` | no | both words | "dog" → dog | `alignment/detection.py`, `labels.py` (`base`) |
 | `substitution` | yes | both words | "girl" → "boy" | `alignment/detection.py`, `labels.py` (`base`) |
-| `omission` | yes | `spoken_word`, `start`, `end` null | "girl" skipped | `alignment/detection.py` |
+| `omission` | yes | `spoken_word` null. `start`/`end` = where the word should have been read: the gap between the last heard word before it and the first heard word after it. Several omissions in a row share that gap by letter count. At the very start or end of the reading, the span is zero-length at the edge. | "girl" skipped | `alignment/detection.py` (`place_omissions`) |
 | `insertion` | once per run | `passage_word` null, one row per word. Contiguous insertions are one error: only the first row of a run has `counted: true` ("I think this good" after the passage = 1). Fillers and false starts between them don't break the run. | "the **big** dog" | `alignment/detection.py`; run counting in `tagging/post_pass.py` |
 | `swap` | once per `move_id` | 2 rows, one per passage word, each with the time that word was heard. The two words may have up to 20 words between them ("the cat sat on the mat" → "the mat sat on the cat"); those keep their own rows between the halves. With 2 or more words between, both crossed words must be exact, and with more than 6 words between, one of them needs 4+ letters. One half may be misread when the words are at most one apart ("happy wos"). That half is its own counted miscue: its row is tagged `mispronunciation` (or `substitution`/`reversal`) and keeps the swap's `move_id`, while the other half carries the swap. That's 2 errors in total. If both halves are misread, it isn't a swap (open question: `audio/OPEN_QUESTIONS.md` #1). A swap read twice ("happy was, happy wos") is a `repetition` plus the swap; the last reading is judged, so here "wos" is a mispronunciation with `detail: "miscorrection"`, 3 errors in total. A copy said just before the swap ("happy wos, happy was") adds a `repetition` row for the words said the same and puts changed words in the swap row's `attempts`. | "was happy" → "happy was" | `alignment/needleman_wunsch.py` (transposition states), `swaps.py`, `detection.py` |
 | `repetition` | yes | `passage_word` null, one row per re-read. Only a contiguous repeat counts, meaning the word or phrase is said again straight away (fillers and false starts in between are ignored). With other words in between ("I… and I will" for "I will"), the earlier copy and the added words are insertions instead. Repeated several times, or restarted over the same words, is still one row (`"they can they can"`). The last reading of each word is the one judged; an earlier, different reading goes in that word's `attempts`. | "to to pet" | `alignment/needleman_wunsch.py` (re-read state), `repeats.py` |
@@ -88,7 +88,7 @@ These are applied in `tagging/post_pass.py`, in the order below. When Lane B (ph
 
 | Tag | Rule | Code |
 |---|---|---|
-| `filler` | A bracketed CrisperWhisper tag (`[UM]`, `[LAUGH]`) or a word like um, uh, er, hmm. A word that's in the passage is never a filler. | `alignment/cleanup.py` |
+| `filler` | A bracketed CrisperWhisper tag (`[UM]`, `[LAUGH]`) or a word like um, uh, er, hmm. A word that's in the passage is never a filler. When the passage has a hum ("Mmm, Cheese!"), any hum the child makes (um, `[UM]`, hmm, mmm) can be its reading and is matched to it; other hums stay fillers. | `alignment/cleanup.py` |
 | `false_start` | A cut-off word (`Th-`), or the start of the next word when it isn't in the passage ("ox oxygen"). | `alignment/cleanup.py` |
 | `off_text` | Talk before or after the reading. **After:** extra words after the last passage word the child read, when the ASR ended the sentence on that word ("…I will. **I think this good.**"). **Before:** extra words before the first passage word read, when the ASR ended a sentence just before it ("**Okay, I'll read.** A mouse and a cat…"). Words that run into the reading are still insertions ("…possible **at all**.", "**The** a mouse…"). The decision uses punctuation, not timing. | `alignment/off_text.py` |
 
@@ -101,7 +101,7 @@ Both the passage and the transcript are normalized before alignment, so these ne
 - hyphens and slashes, which split words;
 - digits, which are spelled out (`3` → `three`);
 - a passage word split by the ASR (`pan de sal` → `pandesal`), which is rejoined;
-- adjacent passage words joined by the ASR (`Mangador` → `mang ador`), which are split back, with the time divided by letter count.
+- adjacent passage words joined by the ASR (`Mangador` → `mang ador`), which are split back, with the time divided by letter count. Near-misses are handled in the alignment, which knows where each word sits. **Split:** one heard word can read 2–3 neighbouring passage words (`Montenoy's` for "Mang Tinoy's"). It's cut where its letters line up with the word boundaries (`mon` + `tenoys`), so each passage word gets its own piece of audio. **Merge:** 2–3 heard pieces can read one passage word (`Jo ang` for "Juaning's", also compared without the possessive "s"). That gives one row, timed from the first piece to the last. Both happen only when the joined form is close and closer than any single word, and only for the words at that spot.
 
 The service needs CrisperWhisper's **verbatim** ("as spoken") output. The cleaned-up ("as meant") text has no fillers, cut-offs or repeats, so those miscues would be lost.
 

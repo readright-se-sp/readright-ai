@@ -1,22 +1,24 @@
 from typing import Protocol
 
-from audio.alignment.text import is_anagram, word_distance
+from audio.alignment.text import cut_like, is_anagram, is_hum, is_proper_noun, sound_key, word_distance
 from audio.models import Column, Token
 
 _INF = 1 << 60
 _M, _D, _I = 0, 1, 2  # last move: diagonal / deletion (passage word unread) / insertion
 _X = 3  # last move: transposition — outer words of a span exchanged, words between read in place
-_R = 4  # state _R + k: re-reading, k words left to catch up (k = 0: just caught up)
+_S, _G = 4, 5  # last move: one heard word read 2-3 passage words (split) / 2-3 heard pieces read one (merge)
+_R = 6  # state _R + k: re-reading, k words left to catch up (k = 0: just caught up)
 _FUZZY_SPAN = 3  # spans up to this may cross near-matches ('happy wos'); wider ones need exact words
 _ANCHOR_SPAN, _ANCHOR_LEN = 8, 4  # wider spans need a 4+ letter crossed word ('the'/'a' swap by chance)
 _ANAGRAM_COST = 0.45  # same letters reordered (saw/was) pairs as a close misreading, not a stranger
+_NAME_SIMILAR_BELOW = 0.7  # a name pairs with a heard word this far off ('montenoys' ~ 'tinoys')
 _SCALE = 1000  # costs in integer milli-units so equal-cost ties are exact
 
 
 class AlignerProtocol(Protocol):
     """Interface for passage<->heard aligners — pipeline depends on this, not NW."""
 
-    def align(self, passage: list[str], heard: list[Token]) -> list[Column]: ...
+    def align(self, passage: list[str], heard: list[Token], names: frozenset[str] = frozenset()) -> list[Column]: ...
 
 
 class NeedlemanWunschAligner:
@@ -42,6 +44,11 @@ class NeedlemanWunschAligner:
     within _FUZZY_SPAN ('happy wos' fits, 'happy dog' doesn't) and exact beyond it; at least
     one of the two is always exact ('hapy wos' is two misreadings, not a swap — OPEN_QUESTIONS.md).
     Past _ANCHOR_SPAN one crossed word needs _ANCHOR_LEN+ letters, as for moves (moves.MoveRule).
+    Split / merge, for words the ASR glued or cut: one heard word reads 2-3 neighbouring passage
+    words ("Mang Tinoy's" heard 'Montenoy's'), or 2-3 heard pieces read one ("Juaning's" heard
+    'Jo ang'). join_cost + how close the joined form is. Only where it sits in the grid, only if
+    the joined form is close and closer than any single word, so 'village' for 'visit' isn't cut
+    to match 'will have' elsewhere, and 'tinoys' alone doesn't swallow a skipped 'mang'.
     """
 
     def __init__(
@@ -56,6 +63,7 @@ class NeedlemanWunschAligner:
         max_repeat: int = 20,
         swap_cost: float = 0.5,
         max_swap_span: int = 22,
+        join_cost: float = 0.2,
     ) -> None:
         """gap_extend must stay > 0.5: else long del+ins runs beat honest 1-to-1 mismatches.
 
@@ -70,6 +78,7 @@ class NeedlemanWunschAligner:
         0 < swap_cost < gap_open: a swap beats its del+ins pair, never ties reading in order.
         max_swap_span = passage words a transposition covers, both ends included (2 = neighbours;
         22 = up to 20 words between, the same reach as a move).
+        0 < join_cost < gap_open: charge for a split or merge, so 1-to-1 pairing wins a tie.
         """
         if gap_extend <= 0.5 or gap_open < gap_extend:
             raise ValueError("need gap_open >= gap_extend > 0.5")
@@ -79,6 +88,8 @@ class NeedlemanWunschAligner:
             raise ValueError("need 0 < swap_cost < gap_open")
         if reread_stray <= 0:
             raise ValueError("need reread_stray > 0")
+        if not 0 < join_cost < gap_open:
+            raise ValueError("need 0 < join_cost < gap_open")
         if max_repeat < 1 or max_swap_span < 2:
             raise ValueError("need max_repeat >= 1 and max_swap_span >= 2")
         self._open = round(gap_open * _SCALE)
@@ -88,22 +99,29 @@ class NeedlemanWunschAligner:
         self._rejump = round(rejump * _SCALE)
         self._reread_stray = round(reread_stray * _SCALE)
         self._swap = round(swap_cost * _SCALE)
+        self._join = round(join_cost * _SCALE)
         self._max_repeat = max_repeat
         self._max_swap_span = max_swap_span
         self._similar_below = similar_below
 
-    def align(self, passage: list[str], heard: list[Token]) -> list[Column]:
+    def align(self, passage: list[str], heard: list[Token], names: frozenset[str] = frozenset()) -> list[Column]:
         """Returns columns in reading order. Every passage word appears once outside rep columns,
-        every heard token exactly once.
+        every heard token exactly once. `names` = proper nouns: a heard word pairs with a name more
+        readily (_name_cost), so a misread name is one misreading, not an omission + insertion.
         """
         n, m = len(passage), len(heard)
-        cost = [[self._cost(p, t.norm) for t in heard] for p in passage]
+        cost = [
+            [self._name_cost(p, t.norm) if is_proper_noun(p, names) else self._cost(p, t.norm) for t in heard]
+            for p in passage
+        ]
         diag = [[0] * (m + 1) for _ in range(n + 1)]  # diag[i][j] = cost of pairing the i, j before, in step
         states = _R + self._max_repeat + 1
         score = [[[_INF] * (m + 1) for _ in range(n + 1)] for _ in range(states)]
         back = [[[_M] * (m + 1) for _ in range(n + 1)] for _ in range(states)]
         span = [[0] * (m + 1) for _ in range(n + 1)]  # width of the transposition ending here
         crossed = [[False] * (m + 1) for _ in range(n + 1)]  # re-read ending here took its last two crossed
+        split_w = [[0] * (m + 1) for _ in range(n + 1)]  # passage words the split ending here covers
+        merge_w = [[0] * (m + 1) for _ in range(n + 1)]  # heard pieces the merge ending here joins
         score[_M][0][0] = 0
         for i in range(1, n + 1):
             score[_D][i][0] = self._open + (i - 1) * self._extend
@@ -120,16 +138,29 @@ class NeedlemanWunschAligner:
                 self._fill(score[_D], back[_D], i, j, self._gap_from(score, i - 1, j, _D))
                 self._fill(score[_I], back[_I], i, j, self._gap_from(score, i, j - 1, _I))
                 self._fill_swap(score, back, span, cost, diag, passage, i, j)
+                self._fill_split(score, back, split_w, cost, passage, heard, i, j)
+                self._fill_merge(score, back, merge_w, cost, passage, heard, i, j)
                 self._fill_reread(score, back, cost, i, j)
                 self._fill_crossed_reread(score, back, crossed, cost, passage, i, j)
 
-        return self._trace(score, back, span, crossed, passage, heard)
+        return self._trace(score, back, span, crossed, split_w, merge_w, passage, heard)
 
     def _cost(self, expected: str, heard: str) -> int:
+        if is_hum(expected) and is_hum(heard):
+            return 0  # 'um' reads 'Mmm'
         d = word_distance(expected, heard)
         if is_anagram(expected, heard):
             d = min(d, _ANAGRAM_COST)
         return round((d if d < self._similar_below else 1.0) * _SCALE)
+
+    def _name_cost(self, name: str, heard: str) -> int:
+        """Pairing cost at a name: a same-sounding spelling is free ('jackie' for 'jacky'), and a
+        looser 'close' (_NAME_SIMILAR_BELOW): unfamiliar names get sounded out far from the spelling.
+        """
+        if sound_key(name) == sound_key(heard):
+            return 0
+        d = word_distance(name, heard)
+        return round((d if d < _NAME_SIMILAR_BELOW else 1.0) * _SCALE)
 
     def _gap_from(self, score: list[list[list[int]]], i: int, j: int, state: int) -> list[int]:
         return [s[i][j] + (self._extend if k == state else self._open) for k, s in enumerate(score[: _R + 1])]
@@ -158,6 +189,74 @@ class NeedlemanWunschAligner:
             total = score[src][i - w][j - w] + self._swap + first + last + middle
             if total < score[_X][i][j]:  # narrowest span wins ties
                 score[_X][i][j], back[_X][i][j], span[i][j] = total, src, w
+
+    def _fill_split(
+        self,
+        score: list[list[list[int]]],
+        back: list[list[list[int]]],
+        split_w: list[list[int]],
+        cost: list[list[int]],
+        passage: list[str],
+        heard: list[Token],
+        i: int,
+        j: int,
+    ) -> None:
+        """heard[j-1] reads the last 2 or 3 passage words, glued ('montenoys' for mang tinoys)."""
+        word = heard[j - 1].norm
+        for w in (2, 3):
+            if i < w:
+                break
+            parts = passage[i - w : i]
+            d = self._joined_cost("".join(parts), word, alone=min(cost[k][j - 1] for k in range(i - w, i)))
+            if d is None or not all(cut_like(word, parts)):
+                continue
+            src = min(range(_R + 1), key=lambda s: score[s][i - w][j - 1])
+            total = score[src][i - w][j - 1] + self._join + d
+            if total < score[_S][i][j]:
+                score[_S][i][j], back[_S][i][j], split_w[i][j] = total, src, w
+
+    def _fill_merge(
+        self,
+        score: list[list[list[int]]],
+        back: list[list[list[int]]],
+        merge_w: list[list[int]],
+        cost: list[list[int]],
+        passage: list[str],
+        heard: list[Token],
+        i: int,
+        j: int,
+    ) -> None:
+        """The last 2 or 3 heard pieces read passage word i-1, cut apart ('jo ang' for juanings).
+
+        Also compared without a possessive 's' ('joang' ~ 'juaning'): children drop it.
+        """
+        target = passage[i - 1]
+        for w in (2, 3):
+            if j < w:
+                break
+            joined = "".join(t.norm for t in heard[j - w : j])
+            alone = min(cost[i - 1][k] for k in range(j - w, j))
+            forms = [target, target[:-1]] if target.endswith("s") and len(target) > 3 else [target]
+            costs = [c for form in forms if (c := self._joined_cost(form, joined, alone)) is not None]
+            if not costs:
+                continue
+            d = min(costs)
+            src = min(range(_R + 1), key=lambda s: score[s][i - 1][j - w])
+            total = score[src][i - 1][j - w] + self._join + d
+            if total < score[_G][i][j]:
+                score[_G][i][j], back[_G][i][j], merge_w[i][j] = total, src, w
+
+    def _joined_cost(self, expected: str, heard: str, alone: int) -> int | None:
+        """Cost of a joined form, or None unless it's close AND closer than any single word (`alone`).
+
+        Cheap checks first: same first letter, similar length.
+        """
+        if not expected or not heard or expected[0] != heard[0]:
+            return None
+        if abs(len(expected) - len(heard)) >= max(len(expected), len(heard)) / 2:
+            return None
+        d = self._cost(expected, heard)
+        return d if d < round(self._similar_below * _SCALE) and d < alone else None
 
     def _fill_reread(
         self, score: list[list[list[int]]], back: list[list[list[int]]], cost: list[list[int]], i: int, j: int
@@ -223,6 +322,8 @@ class NeedlemanWunschAligner:
         back: list[list[list[int]]],
         span: list[list[int]],
         crossed: list[list[bool]],
+        split_w: list[list[int]],
+        merge_w: list[list[int]],
         passage: list[str],
         heard: list[Token],
     ) -> list[Column]:
@@ -248,6 +349,23 @@ class NeedlemanWunschAligner:
                 columns.extend(Column("mid", i - k, heard[j - k]) for k in range(2, w))
                 columns.append(Column("swp", i - 1, heard[j - w]))
                 i, j = i - w, j - w
+            elif state == _S:  # one heard word cut into one piece per passage word (appended backwards)
+                w = split_w[i][j]
+                parts = passage[i - w : i]
+                pieces = _share_timing(heard[j - 1], cut_like(heard[j - 1].norm, parts))
+                for k in reversed(range(w)):
+                    op = "match" if pieces[k].norm == parts[k] else "sub"
+                    columns.append(Column(op, i - w + k, pieces[k]))
+                i, j = i - w, j - 1
+            elif state == _G:  # heard pieces joined into one word, timed first start -> last end
+                w = merge_w[i][j]
+                group = heard[j - w : j]
+                tok = Token(
+                    group[0].id, "".join(t.norm for t in group), " ".join(t.raw for t in group),
+                    group[0].start, group[-1].end,
+                )
+                columns.append(Column("match" if tok.norm == passage[i - 1] else "sub", i - 1, tok))
+                i, j = i - 1, j - w
             elif state == _R and crossed[i][j]:  # spoken order after the reverse: rep i-1, rep i-2
                 columns.append(Column("rep", i - 2, heard[j - 1]))
                 columns.append(Column("rep", i - 1, heard[j - 2]))
@@ -258,3 +376,17 @@ class NeedlemanWunschAligner:
             state = prev
         columns.reverse()
         return columns
+
+
+def _share_timing(tok: Token, pieces: list[str]) -> list[Token]:
+    """Pieces of one heard token, its time span shared by letter count. They keep the token's id."""
+    if tok.start is None or tok.end is None:
+        return [Token(tok.id, piece, tok.raw, None, None) for piece in pieces]
+    total = sum(len(piece) for piece in pieces)
+    out: list[Token] = []
+    t = tok.start
+    for piece in pieces:
+        nxt = t + (tok.end - tok.start) * len(piece) / total
+        out.append(Token(tok.id, piece, tok.raw, t, nxt))
+        t = nxt
+    return out
