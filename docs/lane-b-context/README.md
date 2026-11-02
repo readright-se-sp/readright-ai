@@ -27,6 +27,7 @@ Where the spec says WhisperX, read CrisperWhisper (agreed design).
 
 - Recordings are not in git. Copy them into `audio/data/` (git-ignored) from the team's Google Drive folder; ask the user for the link.
 - Install espeak-ng (Windows `.msi` from the espeak-ng GitHub releases). On Windows the default install path is detected; otherwise set `AUDIO_ESPEAK_LIBRARY`.
+- Machines differ: the B2 spike ran on a GTX 1660 Ti; the second dev machine has an RTX 3050 (B1.1 spike re-run). Note which GPU produced any timing number. On the second machine `uv` was installed with `pip install --user` and is not on PATH (`%APPDATA%\Python\Python312\Scripts`).
 - Optional: set `HF_HOME` and `UV_CACHE_DIR` to a large disk. Model weights are about 1.3 GB per model.
 
 ## Open questions (deferred by the user)
