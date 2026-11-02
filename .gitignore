@@ -14,3 +14,5 @@ Thumbs.db
 
 # temporary files
 misc/
+# Audio lane local recordings (student audio, never commit)
+audio/data/

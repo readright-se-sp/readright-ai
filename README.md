@@ -115,7 +115,8 @@ MAI runs on one GPU instance (EC2 g5.2xlarge, ap-southeast-1) as Docker Compose 
 | Project | Status |
 |---|---|
 | `server/` | Runs locally with Redis. `POST /v1/analyses` runs end to end against the lanes (Phase 6 of 7, see [server/ROADMAP.md](server/ROADMAP.md)): `request_id` idempotency, a 115 s deadline, video download, ffmpeg preprocessing, parallel audio/video lane calls, result merging, and cutting and uploading the mini audio files to S3. Admission control returns 429 when the work cannot finish in time, and `/health/ready` is 503 until Redis, both lanes, S3 and ffmpeg are up. Fake workers stand in for the lanes. |
-| `audio/`, `video/` | Not started. |
+| `audio/` | Phase B0 done: the uv project scaffold and the shared, validated types exist (no ML, API or audio processing yet). Next: Lane B phases B1 to B7, see [audio/ROADMAP.md](audio/ROADMAP.md). |
+| `video/` | Not started. |
 | Docker Compose | Not yet (Phase 7). |
 
 ### Run the server locally

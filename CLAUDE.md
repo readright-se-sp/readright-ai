@@ -10,7 +10,8 @@ The MAI (Microservices AI) is the AI layer of ReadRight, an oral reading assessm
 ## Layout
 
 - `server/`: FastAPI entry point. See [server/CLAUDE.md](server/CLAUDE.md).
-- `audio/`, `video/`: analysis lanes. Not started yet.
+- `audio/`: audio lane. Roadmap only so far; Lane A (word lane, post-pass) and Lane B (phonetic lane, arbitration) are built by different developers.
+- `video/`: video lane. Not started yet.
 - `contracts/`: shared shapes live only here.
 - Each of `server/`, `audio/`, `video/` is an independent Python project. They share no code.
 
@@ -39,7 +40,7 @@ Each project is built in phases described in its own roadmap. Before planning or
 | Project | Roadmap |
 |---|---|
 | `server/` | [server/ROADMAP.md](server/ROADMAP.md) |
-| `audio/` | Not created yet |
+| `audio/` | [audio/ROADMAP.md](audio/ROADMAP.md) |
 | `video/` | Not created yet |
 
 When code or decisions change, keep [README.md](README.md), the project's README and [docs/deployment-architecture.md](docs/deployment-architecture.md) consistent with them.

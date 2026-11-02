@@ -39,8 +39,8 @@ Every 200 result MUST echo the request's `job_id`. The server rejects a result w
     {
       "actual_phrase": "cat",
       "spoken_phrase": "cap",
-      "actual_phoneme": ["k", "ae", "t"],
-      "spoken_phoneme": ["k", "ae", "p"],
+      "actual_phoneme": ["k", "æ", "t"],
+      "spoken_phoneme": ["k", "æ", "p"],
       "start_ms": 1000,
       "end_ms": 1400,
       "miscue_type": "substitution"
@@ -49,7 +49,7 @@ Every 200 result MUST echo the request's `job_id`. The server rejects a result w
 }
 ```
 
-`start_ms` is an integer >= 0 and `end_ms` an integer >= `start_ms`. `miscue_type` uses the same values as the BE contract (`mispronunciation`, `omission`, `substitution`, `insertion`, `repetition`, `transposition`, `reversal`, `self-correction`).
+`start_ms` is an integer >= 0 and `end_ms` an integer >= `start_ms`. Phonemes are IPA segments (espeak-ng conventions, no stress marks). For an omission, `spoken_phrase` and `spoken_phoneme` are empty and the span is the gap where the word should have been read (end of the previous timed word to start of the next; zero-length if they touch). `miscue_type` uses the same values as the BE contract (`mispronunciation`, `omission`, `substitution`, `insertion`, `repetition`, `transposition`, `reversal`, `self-correction`).
 
 The audio lane owns `reading_score`, `wpm`, `is_word_by_word`, `is_disregard_punctuation`, `is_monotonous`, `is_hardly_audible` and the miscues.
 

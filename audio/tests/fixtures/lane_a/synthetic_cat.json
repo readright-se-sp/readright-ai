@@ -1,0 +1,293 @@
+{
+  "passage": {
+    "passage_hash": "synthetic-cat",
+    "tokens": [
+      {
+        "index": 0,
+        "raw": "The",
+        "key": "the"
+      },
+      {
+        "index": 1,
+        "raw": "cat",
+        "key": "cat"
+      },
+      {
+        "index": 2,
+        "raw": "sat",
+        "key": "sat"
+      },
+      {
+        "index": 3,
+        "raw": "on",
+        "key": "on"
+      },
+      {
+        "index": 4,
+        "raw": "the",
+        "key": "the"
+      },
+      {
+        "index": 5,
+        "raw": "big",
+        "key": "big"
+      },
+      {
+        "index": 6,
+        "raw": "mat",
+        "key": "mat"
+      }
+    ],
+    "pronunciations": {
+      "the": [
+        [
+          "ð",
+          "ə"
+        ],
+        [
+          "ð",
+          "i"
+        ]
+      ],
+      "cat": [
+        [
+          "k",
+          "æ",
+          "t"
+        ]
+      ],
+      "sat": [
+        [
+          "s",
+          "æ",
+          "t"
+        ]
+      ],
+      "on": [
+        [
+          "ɒ",
+          "n"
+        ],
+        [
+          "ɑ",
+          "n"
+        ]
+      ],
+      "big": [
+        [
+          "b",
+          "ɪ",
+          "ɡ"
+        ]
+      ],
+      "mat": [
+        [
+          "m",
+          "æ",
+          "t"
+        ]
+      ]
+    }
+  },
+  "lane_a": {
+    "units": [
+      {
+        "surface": "the",
+        "key": "the",
+        "passage_index": 0,
+        "passage_span": 1,
+        "source_indices": [
+          0
+        ],
+        "start_ms": 100,
+        "end_ms": 250,
+        "align_score": 1.0
+      },
+      {
+        "surface": "cap",
+        "key": "cat",
+        "passage_index": 1,
+        "passage_span": 1,
+        "source_indices": [
+          1
+        ],
+        "start_ms": 250,
+        "end_ms": 600,
+        "align_score": 0.6
+      },
+      {
+        "surface": "sat",
+        "key": "sat",
+        "passage_index": 2,
+        "passage_span": 1,
+        "source_indices": [
+          2
+        ],
+        "start_ms": null,
+        "end_ms": null,
+        "align_score": 1.0
+      },
+      {
+        "surface": "",
+        "key": "on",
+        "passage_index": 3,
+        "passage_span": 1,
+        "source_indices": [],
+        "start_ms": null,
+        "end_ms": null,
+        "align_score": 0.0
+      },
+      {
+        "surface": "very",
+        "key": "very",
+        "passage_index": null,
+        "passage_span": 0,
+        "source_indices": [
+          3
+        ],
+        "start_ms": 900,
+        "end_ms": 1200,
+        "align_score": 0.0
+      },
+      {
+        "surface": "the",
+        "key": "the",
+        "passage_index": 4,
+        "passage_span": 1,
+        "source_indices": [
+          4
+        ],
+        "start_ms": 1250,
+        "end_ms": 1400,
+        "align_score": 1.0
+      },
+      {
+        "surface": "bik",
+        "key": "big",
+        "passage_index": 5,
+        "passage_span": 1,
+        "source_indices": [
+          5
+        ],
+        "start_ms": 1400,
+        "end_ms": 1800,
+        "align_score": 0.5
+      },
+      {
+        "surface": "mat",
+        "key": "mat",
+        "passage_index": 6,
+        "passage_span": 1,
+        "source_indices": [
+          6
+        ],
+        "start_ms": 1800,
+        "end_ms": 2200,
+        "align_score": 1.0
+      }
+    ],
+    "labels": [
+      "correct",
+      "substitution",
+      "correct",
+      "omission",
+      "insertion",
+      "correct",
+      "mispronunciation",
+      "correct"
+    ],
+    "trace": [
+      {
+        "op": "match",
+        "passage_index": 0,
+        "asr_index": 0
+      },
+      {
+        "op": "sub",
+        "passage_index": 1,
+        "asr_index": 1
+      },
+      {
+        "op": "match",
+        "passage_index": 2,
+        "asr_index": 2
+      },
+      {
+        "op": "delete",
+        "passage_index": 3,
+        "asr_index": null
+      },
+      {
+        "op": "insert",
+        "passage_index": null,
+        "asr_index": 3
+      },
+      {
+        "op": "match",
+        "passage_index": 4,
+        "asr_index": 4
+      },
+      {
+        "op": "sub",
+        "passage_index": 5,
+        "asr_index": 5
+      },
+      {
+        "op": "match",
+        "passage_index": 6,
+        "asr_index": 6
+      }
+    ],
+    "asr_words": [
+      {
+        "index": 0,
+        "text": "the",
+        "start_ms": 100,
+        "end_ms": 250,
+        "score": 0.98
+      },
+      {
+        "index": 1,
+        "text": "cap",
+        "start_ms": 250,
+        "end_ms": 600,
+        "score": 0.9
+      },
+      {
+        "index": 2,
+        "text": "sat",
+        "start_ms": null,
+        "end_ms": null,
+        "score": 0.2
+      },
+      {
+        "index": 3,
+        "text": "very",
+        "start_ms": 900,
+        "end_ms": 1200,
+        "score": 0.95
+      },
+      {
+        "index": 4,
+        "text": "the",
+        "start_ms": 1250,
+        "end_ms": 1400,
+        "score": 0.97
+      },
+      {
+        "index": 5,
+        "text": "bik",
+        "start_ms": 1400,
+        "end_ms": 1800,
+        "score": 0.7
+      },
+      {
+        "index": 6,
+        "text": "mat",
+        "start_ms": 1800,
+        "end_ms": 2200,
+        "score": 0.96
+      }
+    ]
+  }
+}
