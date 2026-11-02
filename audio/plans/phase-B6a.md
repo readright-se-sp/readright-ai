@@ -172,3 +172,57 @@ The 25 remaining false overrules at the chosen config (13 selection, 9 held-out 
   - **Hold-out:** the same split as B6a.
 - **Open the I1 + B6a PR to `dev`** once B6a is done. The Lane A developer reviews it.
 - **I2:** the audio worker API (see `phase-I1.md`, "After I1").
+
+## Plan change after the partial results (user-approved, 2026-11-02)
+
+The targets (held-out FOR ≤ 2%, coverage ≥ 85%) and the hold-out split stay as they are. There is one bounded extra sweep round, then B6a closes whatever its result.
+
+**Step 4b: extension round (from the cache only).**
+- New rule `SHORT_WORD_MAX_PHONES` (0 = off). A Stage 3 `match` row whose shortest expected variant has at most this many phonemes is never overruled. `check = unverifiable`, reason `short_word`. It doesn't affect clearing SUB/MISPRON to `match`, or omissions. Tests: the boundary, and that clears still work.
+- Grid:
+
+  | Setting | Values |
+  |---|---|
+  | window | `pad` 100, 150, 200 and `midpoint` 100, 150, 200 |
+  | `COVERAGE_GUARD_RATIO` | 0.5, 0.67, 0.8, 1.0 |
+  | `SHORT_WORD_MAX_PHONES` | 0, 2, 3 |
+  | adaptive overrule | on only (the round 1 sweep showed off doubles FOR) |
+
+- Same selection rule and tie-breaks. Add `SHORT_WORD_MAX_PHONES` 0 before 2 before 3 as the last tie-break (simpler wins).
+
+**Closing B6a.**
+- If a config meets the targets, set it as the defaults.
+- If none does, set the selection rule's best config as the defaults anyway, record the frontier, and stop tuning. The rest (category 2: long words, probably real mispronunciations) needs B6b's labels.
+- Either way, the `AUDIO_PHONETIC_ENABLED` default becomes `false` until B6b shows that Lane B improves on Lane A against the labels. The deployment ships Lane A only, and Lane B is switched on by env later. Measurement tools pass `PHONETIC_ENABLED=true` explicitly.
+- Q1 is resolved: `pad` and `midpoint` are within 0.5 points, so `midpoint` wins on the tie-break and `pad` mode is removed. If the extension round shows `pad` clearly better (by more than 0.5 points held-out FOR), keep `pad` and remove `midpoint` instead.
+- Q3 is resolved: the adaptive overrule stays.
+- Step 5's live run needs the GPU. Run it only when no benchmark is running.
+- Then do the hand-checked fixture, the docs, ROADMAP, and push. No PR.
+
+## Results (Step 4b, extension round, 2026-11-02)
+
+`SHORT_WORD_MAX_PHONES` is added (arbiter, setting, reviewer; reason `short_word`; tests for the boundary, for clears and for omissions). `devtools/sweep_join.py --round2` ran the 72-config grid from the cache (`devtools/out/sweep_join_round2.csv`, git-ignored). No models were loaded.
+
+**Chosen by the rule:** `mid150 guard1.0 adaptive on SHORT_WORD_MAX_PHONES 3`.
+
+| | FOR | Coverage | `match` rows judged | False overrules | Clears (SUB/MISPRON to match) | Counted errors, Lane A to final |
+|---|---|---|---|---|---|---|
+| Selection (6) | 1.59% | 89.96% | 377 | 6 | 9 | 44 to 41 |
+| **Held-out (3)** | **1.91%** | **93.39%** | 209 | 4 | 5 | 16 to 15 |
+
+**Target met** (held-out FOR at most 2% with coverage at least 85%). 12 of the 72 configs meet it on the held-out set, so it isn't one lucky config. The 4 held-out false overrules are all in the two `marian_came` recordings (indices 22, 52, 61, 72). The 6 selection ones are `a_mouse_and_a` #12, `every_saturday` #59, #60, #63, #74 and `ring_ring` #30.
+
+Selection-set frontier at `mid150` (selection FOR / coverage, held-out FOR / coverage):
+
+| Guard | short 0 | short 2 | short 3 |
+|---|---|---|---|
+| 0.5 | 9.95% / 97.4%, 8.48% / 99.6% | 6.31% / 94.0%, 3.76% / 95.0% | 4.13% / 92.1%, 2.84% / 94.2% |
+| 0.67 | 4.38% / 92.3%, 4.21% / 95.5% | 3.13% / 91.2%, 2.38% / 93.8% | 2.37% / 90.6%, 1.91% / 93.4% |
+| 0.8 | 4.13% / 92.1%, 4.21% / 95.5% | 2.88% / 91.0%, 2.38% / 93.8% | 2.11% / 90.4%, 1.91% / 93.4% |
+| 1.0 | 3.64% / 91.7%, 4.21% / 95.5% | 2.37% / 90.6%, 2.38% / 93.8% | **1.59% / 90.0%, 1.91% / 93.4%** |
+
+What it shows:
+- Short words were the main source of false overrules: `SHORT_WORD_MAX_PHONES` 3 halves the FOR at every guard value, for about 2 points of coverage.
+- The guard now needs to be strict (1.0 means every expected phoneme must be heard before a `match` can be overruled). That's a conservative setting: Lane B can only overrule a word it heard in full.
+- Window rule: `pad150` and `mid150` give identical numbers, `pad100` equals `mid100`, and `pad200` equals `mid200` (held-out FOR 2.40%, 0.5 points worse than 150). `pad` is not better than `midpoint` by more than 0.5 points, so Q1 resolves to removing `pad`.
+- Counted errors are no longer higher than Lane A alone (44 to 41, 16 to 15), but the gain is small. Whether Lane B improves on Lane A needs labels (B6b), so `AUDIO_PHONETIC_ENABLED` defaults to false.

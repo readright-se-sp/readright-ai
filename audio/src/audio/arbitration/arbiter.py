@@ -73,10 +73,13 @@ def arbitrate(
     t_overrule: float,
     coverage_guard_ratio: float = 0.0,
     adaptive_overrule: bool = True,
+    short_word_max_phones: int = 0,
 ) -> ArbitrationResult:
     """Final label per unit. A CORRECT word is only overruled when Lane B heard at least
     ceil(coverage_guard_ratio x shortest expected pronunciation) phonemes (0 = no guard); below
-    that the label stays and the check is UNVERIFIABLE with reason "low_coverage".
+    that the label stays and the check is UNVERIFIABLE with reason "low_coverage". A CORRECT word
+    whose shortest expected pronunciation has at most short_word_max_phones phonemes (0 = off) is
+    never overruled: same outcome with reason "short_word". Clearing and omissions are unaffected.
     """
     n = len(lane_a.units)
     if join is not None and (len(join.unit_phonemes) != n or len(join.ms_per_phoneme) != n):
@@ -116,9 +119,13 @@ def arbitrate(
                 else t_overrule
             )
             label = _label(stage3, exp.distance, d_hyp, exp.deviations, heard, t_flag, eff_overrule)
-            if stage3 == _L.CORRECT and label != stage3 and coverage_guard_ratio > 0:
+            if stage3 == _L.CORRECT and label != stage3:
                 shortest = min(len(v) for v in expected)
-                if len(heard) < math.ceil(coverage_guard_ratio * shortest):
+                if shortest <= short_word_max_phones:
+                    label, check, reason = stage3, PhoneticCheck.UNVERIFIABLE, "short_word"
+                elif coverage_guard_ratio > 0 and len(heard) < math.ceil(
+                    coverage_guard_ratio * shortest
+                ):
                     label, check, reason = stage3, PhoneticCheck.UNVERIFIABLE, "low_coverage"
             threshold = eff_overrule if stage3 == _L.CORRECT else t_flag
             if abs(exp.distance - threshold) <= _NEAR:

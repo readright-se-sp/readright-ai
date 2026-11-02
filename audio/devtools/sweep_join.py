@@ -14,6 +14,7 @@ The HELD-OUT recordings are only reported, never used to choose.
 
     uv run python devtools/cache_runs.py     # once
     uv run python devtools/sweep_join.py     # writes devtools/out/sweep_join.csv
+    uv run python devtools/sweep_join.py --round2   # step 4b grid, sweep_join_round2.csv
 """
 
 import csv
@@ -31,6 +32,7 @@ sys.path.insert(0, str(ROOT / "devtools"))
 from replay import Cached, Replayer, load_all, with_overrides  # noqa: E402
 
 OUT = ROOT / "devtools" / "out" / "sweep_join.csv"
+OUT_ROUND2 = ROOT / "devtools" / "out" / "sweep_join_round2.csv"
 
 # The split, fixed 2026-11-02 before any sweep (plans/phase-B6a.md), by passage: no passage is
 # in both sets.
@@ -87,6 +89,25 @@ def grid() -> list[dict[str, Any]]:
     return configs
 
 
+def grid_round2() -> list[dict[str, Any]]:
+    """Step 4b (plans/phase-B6a.md, "Plan change"): adaptive overrule on only."""
+    windows: list[dict[str, Any]] = [
+        {"JOIN_MODE": "pad", "JOIN_PAD_MS": p} for p in (100, 150, 200)
+    ]
+    windows += [{"JOIN_MODE": "midpoint", "JOIN_MAX_REACH_MS": r} for r in (100, 150, 200)]
+    return [
+        {
+            **w,
+            "COVERAGE_GUARD_RATIO": guard,
+            "SHORT_WORD_MAX_PHONES": short,
+            "ADAPTIVE_OVERRULE": True,
+        }
+        for w in windows
+        for guard in (0.5, 0.67, 0.8, 1.0)
+        for short in (0, 2, 3)
+    ]
+
+
 def name(cfg: dict[str, Any]) -> str:
     window = (
         f"pad{cfg['JOIN_PAD_MS']}"
@@ -94,7 +115,9 @@ def name(cfg: dict[str, Any]) -> str:
         else f"mid{cfg['JOIN_MAX_REACH_MS']}"
     )
     adaptive = "on" if cfg["ADAPTIVE_OVERRULE"] else "off"
-    return f"{window} guard{cfg['COVERAGE_GUARD_RATIO']} adaptive={adaptive}"
+    short = cfg.get("SHORT_WORD_MAX_PHONES", 0)
+    suffix = f" short{short}" if "SHORT_WORD_MAX_PHONES" in cfg else ""
+    return f"{window} guard{cfg['COVERAGE_GUARD_RATIO']} adaptive={adaptive}{suffix}"
 
 
 def evaluate(
@@ -146,12 +169,15 @@ def select(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
             r["JOIN_MODE"] != "midpoint",  # midpoint first
             r["COVERAGE_GUARD_RATIO"] > 0,  # guard off first
             bool(r["ADAPTIVE_OVERRULE"]),  # adaptive off first
+            r.get("SHORT_WORD_MAX_PHONES", 0),  # 0 before 2 before 3
             r["name"],
         ),
     )
 
 
 def main() -> None:
+    round2 = "--round2" in sys.argv
+    out = OUT_ROUND2 if round2 else OUT
     caches = load_all()
     if not caches:
         sys.exit("No cache: run devtools/cache_runs.py first")
@@ -166,13 +192,14 @@ def main() -> None:
     print(f"selection ({len(sel_names)}): {sel_names}\nheld-out ({len(held_names)}): {held_names}")
 
     rows: list[dict[str, Any]] = []
-    for cfg in grid():
+    for cfg in grid_round2() if round2 else grid():
         sel, held = evaluate(replayer, caches, base_rows, cfg, base_errors)
         rows.append(
             {
                 **cfg,
                 "JOIN_PAD_MS": cfg.get("JOIN_PAD_MS", ""),
                 "JOIN_MAX_REACH_MS": cfg.get("JOIN_MAX_REACH_MS", ""),
+                "SHORT_WORD_MAX_PHONES": cfg.get("SHORT_WORD_MAX_PHONES", 0),
                 "name": name(cfg),
                 "sel_for": sel.false_overrule_rate,
                 "sel_coverage": sel.coverage,
@@ -193,15 +220,15 @@ def main() -> None:
             }
         )
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    with OUT.open("w", newline="", encoding="utf-8") as f:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
 
     def line(r: dict[str, Any]) -> str:
         return (
-            f"{r['name']:<34} sel FOR {r['sel_for']:6.2%} cov {r['sel_coverage']:6.2%} "
+            f"{r['name']:<40} sel FOR {r['sel_for']:6.2%} cov {r['sel_coverage']:6.2%} "
             f"clears {r['sel_clears']:>2} err {r['sel_errors_lane_a']}->{r['sel_errors_final']} | "
             f"held FOR {r['held_for']:6.2%} cov {r['held_coverage']:6.2%} "
             f"clears {r['held_clears']:>2} err {r['held_errors_lane_a']}->{r['held_errors_final']}"
@@ -214,8 +241,10 @@ def main() -> None:
     for r in ranked[:10]:
         print(" ", line(r))
     chosen = select(rows)
-    print("\nI1 baseline (pad50 guard0 adaptive on):")
-    print(" ", line(next(r for r in rows if r["name"] == "pad50 guard0.0 adaptive=on")))
+    baseline = next((r for r in rows if r["name"] == "pad50 guard0.0 adaptive=on"), None)
+    if baseline:
+        print("\nI1 baseline (pad50 guard0 adaptive on):")
+        print(" ", line(baseline))
     if chosen is None:
         print("\nNO CONFIG reaches coverage >= 85% on the selection set")
         return

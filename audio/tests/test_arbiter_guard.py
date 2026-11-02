@@ -106,3 +106,27 @@ def test_adaptive_overrule_switch():
     on = verdict(L.CORRECT, heard, expected=IT, adaptive_overrule=True)
     off = verdict(L.CORRECT, heard, expected=IT, adaptive_overrule=False)
     assert (on.label, off.label) == (L.CORRECT, L.MISPRONUNCIATION)
+
+
+@pytest.mark.parametrize(
+    ("max_phones", "blocked"),
+    [(0, False), (1, False), (2, True), (3, True)],  # IT has 2 expected phonemes
+)
+def test_short_word_rule_boundary(max_phones, blocked):
+    v = verdict(L.CORRECT, ("k", "k"), expected=IT, short_word_max_phones=max_phones)
+    if blocked:
+        assert (v.label, v.phonetic_check, v.reason) == (
+            L.CORRECT,
+            PhoneticCheck.UNVERIFIABLE,
+            "short_word",
+        )
+    else:
+        assert (v.label, v.phonetic_check) == (L.MISPRONUNCIATION, PhoneticCheck.DONE)
+
+
+def test_short_word_rule_does_not_block_clears_or_longer_words():
+    cleared = verdict(L.SUBSTITUTION, IT, expected=IT, short_word_max_phones=3)
+    assert (cleared.label, cleared.phonetic_check) == (L.CORRECT, PhoneticCheck.DONE)
+    long_word = verdict(L.CORRECT, ("k",), short_word_max_phones=3)  # STOP has 4 phonemes
+    assert long_word.label == L.MISPRONUNCIATION
+    assert verdict(L.OMISSION, (), expected=IT, short_word_max_phones=3).label == L.OMISSION

@@ -47,6 +47,7 @@ class AudioSettings(BaseSettings):
 
     # Arbitration (B5). Starting values; B6 tunes them (spec section 9: measure, do not guess).
     COVERAGE_GUARD_RATIO: float = 0.5  # CORRECT is overruled only if >= this share of phonemes heard
+    SHORT_WORD_MAX_PHONES: int = 0  # CORRECT words this short are never overruled (0 = off)
     ADAPTIVE_OVERRULE: bool = True  # longer overrule threshold for short words with one extra phoneme
     T_FLAG: float = 0.25
     T_OVERRULE: float = 0.45
