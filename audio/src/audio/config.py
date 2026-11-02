@@ -56,6 +56,8 @@ class AudioSettings(BaseSettings):
         True  # longer overrule threshold for short words with one extra phoneme
     )
     T_FLAG: float = 0.25
+    T_FLAG_INCLUSIVE: bool = True  # a distance equal to T_FLAG clears a row (<=); false: keeps it (<)
+    OVERRULE_MATCH: bool = True  # false: Lane B never changes a row Lane A tagged match
     T_OVERRULE: float = 0.45
 
     @model_validator(mode="after")

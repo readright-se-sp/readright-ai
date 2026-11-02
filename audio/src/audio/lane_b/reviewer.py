@@ -231,6 +231,8 @@ class PhoneticReviewer:
             coverage_guard_ratio=s.COVERAGE_GUARD_RATIO,
             adaptive_overrule=s.ADAPTIVE_OVERRULE,
             short_word_max_phones=s.SHORT_WORD_MAX_PHONES,
+            overrule_match=s.OVERRULE_MATCH,
+            t_flag_inclusive=s.T_FLAG_INCLUSIVE,
         )
 
         out = list(rows)
