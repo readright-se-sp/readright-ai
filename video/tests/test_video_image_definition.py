@@ -156,7 +156,16 @@ def test_healthcheck_probes_ready_endpoint_with_python_urllib_and_has_a_start_pe
 
 @pytest.mark.parametrize(
     "entry",
-    [".env", ".venv", "tests", "models", "__pycache__", ".pytest_cache", ".ruff_cache"],
+    [
+        ".env",
+        ".venv",
+        "tests",
+        "models",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".feature-cache",
+    ],
 )
 def test_dockerignore_excludes_local_and_generated_files(entry):
     """Criterion 5."""

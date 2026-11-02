@@ -6,6 +6,8 @@ import subprocess
 import pytest
 from packaging_helpers import ROOT, as_text, docker_ready, load_yaml
 
+from app.config import Settings
+
 
 @pytest.fixture
 def services():
@@ -68,6 +70,30 @@ def test_env_example_lists_the_video_cpu_setting():
     assert re.search(r"^MAI_VIDEO_CPUS=\d+", text, re.MULTILINE)
 
 
+def test_video_worker_passes_through_only_real_settings_without_values(worker):
+    """Unset passthroughs keep the image default, so compose holds no second copy of a default."""
+    names = {f"MAI_VIDEO_{name.upper()}" for name in Settings.model_fields}
+    env = worker["environment"]
+    assert isinstance(env, list) and env
+    for entry in env:
+        assert "=" not in entry, entry
+        assert entry in names, entry
+    for entry in ("MAI_VIDEO_MODEL_DIR", "MAI_VIDEO_ALLOWED_MEDIA_DIR"):
+        assert entry not in env
+
+
+def test_env_example_lists_every_video_worker_passthrough(worker):
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    missing = [name for name in worker["environment"] if f"{name}=" not in text]
+    assert not missing
+
+
+def test_loadtest_overlay_publishes_the_video_worker_on_loopback_only():
+    services = load_yaml(ROOT / "compose.loadtest.yaml")["services"]
+    assert set(services) == {"video-worker"}
+    assert services["video-worker"]["ports"] == ["127.0.0.1:8002:8002"]
+
+
 docker_only = pytest.mark.skipif(not docker_ready(), reason="docker daemon not available")
 
 
@@ -105,3 +131,31 @@ def test_compose_config_video_worker_cpus_follows_video_cpus_setting(files):
     assert done.returncode == 0, done.stderr
     worker = json.loads(done.stdout)["services"]["video-worker"]
     assert float(worker["cpus"]) == 2
+
+
+@docker_only
+@pytest.mark.parametrize("files", FILE_SETS, ids=["production", "with-override"])
+def test_compose_config_video_worker_leaves_unset_tuning_to_the_image(files):
+    done = compose_config(*files)
+    assert done.returncode == 0, done.stderr
+    env = json.loads(done.stdout)["services"]["video-worker"].get("environment") or {}
+    assert all(value is None for value in env.values()), env
+
+
+@docker_only
+def test_compose_config_video_worker_receives_a_set_json_override():
+    value = '{"brow_down": 0.25}'
+    done = compose_config("compose.yaml", extra_env={"MAI_VIDEO_EXPRESSION_GROUP_MIN_RANGE": value})
+    assert done.returncode == 0, done.stderr
+    env = json.loads(done.stdout)["services"]["video-worker"]["environment"]
+    assert env["MAI_VIDEO_EXPRESSION_GROUP_MIN_RANGE"] == value
+
+
+@docker_only
+def test_compose_config_with_loadtest_overlay_is_valid():
+    done = compose_config("compose.yaml", "compose.loadtest.yaml")
+    assert done.returncode == 0, done.stderr
+    ports = json.loads(done.stdout)["services"]["video-worker"]["ports"]
+    assert [(p["host_ip"], str(p["published"]), p["target"]) for p in ports] == [
+        ("127.0.0.1", "8002", 8002)
+    ]

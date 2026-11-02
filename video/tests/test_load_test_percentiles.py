@@ -7,9 +7,10 @@ import uuid
 import httpx
 import numpy as np
 import pytest
-from devtools.load_test import percentiles, run_load
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+from devtools.load_test import percentiles, run_load
 
 STATS = {"completed": 3, "p95_ms": 12}
 
