@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, TypeAlias, TypedDict
+from typing import Literal, NotRequired, TypeAlias, TypedDict
 
 # Base tags (alignment): match, substitution, omission, insertion, swap, repetition, moved.
 # Derived tags (tagging/): mispronunciation, reversal, letter_transposition, self_correction.
@@ -53,6 +53,25 @@ class SpokenWord(TypedDict):
     score: float | None
 
 
+PhoneticCheckState: TypeAlias = Literal["done", "unverifiable", "skipped"]
+
+
+class PhoneticEvidence(TypedDict):
+    """What Lane B heard for one row (set by lane_b/reviewer.py; absent on rows Lane B did not judge).
+
+    Phonemes are IPA segments after audio.phonetics.ipa normalisation. expected_phonemes is the best
+    matching accepted pronunciation (empty for an insertion). d_exp / d_hyp are the weighted distances
+    to the passage word and to the word the ASR wrote (None when not computed). Only check == "done"
+    means Lane B decided the tag; the post-pass leaves such rows to Lane B.
+    """
+
+    expected_phonemes: list[str]
+    heard_phonemes: list[str]
+    d_exp: float | None
+    d_hyp: float | None
+    check: PhoneticCheckState
+
+
 class AlignedWord(TypedDict):
     """One output row: (passage_word, spoken_word, start, end, tag, move_id) + bookkeeping.
 
@@ -73,6 +92,20 @@ class AlignedWord(TypedDict):
     attempts: list[str]
     detail: EventDetail | None
     move_id: int | None
+    phonetic: NotRequired[PhoneticEvidence]
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewContext:
+    """Per-request facts a row reviewer (Lane B) needs besides the audio and the rows.
+
+    passage_text is the passage as given (the reviewer needs the written forms for G2P), proper_nouns
+    the normalised name words Lane A used, deadline_ms the absolute UTC epoch deadline in ms (None = none).
+    """
+
+    passage_text: str
+    proper_nouns: frozenset[str]
+    deadline_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

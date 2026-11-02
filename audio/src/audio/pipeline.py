@@ -8,7 +8,7 @@ from audio.alignment.off_text import OffTextDetector
 from audio.alignment.repeats import RepeatFolder
 from audio.alignment.swaps import SwapDetector
 from audio.alignment.text import guess_proper_nouns, normalize, tokenize_passage
-from audio.models import CONTRACT_VERSION, AlignedWord, AudioResult, SpokenWord
+from audio.models import CONTRACT_VERSION, AlignedWord, AudioResult, ReviewContext, SpokenWord
 from audio.tagging.moved import MovedWordTagger
 from audio.tagging.post_pass import PostPass
 from audio.tagging.scoring import ReadingScorer
@@ -18,7 +18,7 @@ from audio.transcription.crisper_whisper import TranscriberProtocol
 class RowReviewerProtocol(Protocol):
     """Lane B hook (phonemes + arbiter): re-judges Lane A rows. Must keep row order + coverage."""
 
-    def review(self, wav_path: str, rows: list[AlignedWord]) -> list[AlignedWord]: ...
+    def review(self, wav_path: str, rows: list[AlignedWord], context: ReviewContext) -> list[AlignedWord]: ...
 
 
 class WordLane:
@@ -75,16 +75,28 @@ class AudioPipeline:
         self._scorer = scorer
         self._reviewers = reviewers
 
-    def run(self, wav_path: str, passage_text: str, proper_nouns: Sequence[str] = ()) -> AudioResult:
-        """Full analysis of a 16 kHz mono WAV. Raises ValueError if the passage has no words."""
-        return self._analyze(self._transcriber.transcribe(wav_path), passage_text, proper_nouns, wav_path)
+    def run(
+        self, wav_path: str, passage_text: str, proper_nouns: Sequence[str] = (), deadline_ms: int | None = None
+    ) -> AudioResult:
+        """Full analysis of a 16 kHz mono WAV. Raises ValueError if the passage has no words.
+
+        deadline_ms (absolute UTC epoch ms) only limits the reviewers: past it they return the rows unchanged.
+        """
+        return self._analyze(
+            self._transcriber.transcribe(wav_path), passage_text, proper_nouns, wav_path, deadline_ms
+        )
 
     def analyze(self, spoken: list[SpokenWord], passage_text: str, proper_nouns: Sequence[str] = ()) -> AudioResult:
         """Everything after ASR, no audio -> Lane B skipped. For tests + replaying saved transcripts."""
         return self._analyze(spoken, passage_text, proper_nouns, None)
 
     def _analyze(
-        self, spoken: list[SpokenWord], passage_text: str, proper_nouns: Sequence[str], wav_path: str | None
+        self,
+        spoken: list[SpokenWord],
+        passage_text: str,
+        proper_nouns: Sequence[str],
+        wav_path: str | None,
+        deadline_ms: int | None = None,
     ) -> AudioResult:
         passage = tokenize_passage(passage_text)
         if not passage:
@@ -93,7 +105,8 @@ class AudioPipeline:
         nouns = frozenset(w for name in names for w in normalize(name))
         rows = self._lane_a.rows(spoken, passage, nouns)
         if wav_path is not None:
+            context = ReviewContext(passage_text, nouns, deadline_ms)
             for reviewer in self._reviewers:
-                rows = reviewer.review(wav_path, rows)
+                rows = reviewer.review(wav_path, rows, context)
         rows = self._post_pass.run(rows, nouns)
         return AudioResult(version=CONTRACT_VERSION, score=self._scorer.score(rows, len(passage)), words=rows, transcript=spoken)
