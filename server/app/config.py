@@ -1,12 +1,13 @@
 import os
 from pathlib import Path
-from typing import Self
+from typing import Annotated, Self, TypeVar
 
 import httpx
 from dotenv import dotenv_values
 from pydantic import (
     AliasChoices,
     Field,
+    NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
@@ -16,6 +17,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+T = TypeVar("T")
+_Finite = Annotated[T, Field(allow_inf_nan=False)]
 API_KEY_PLACEHOLDER = "change-me"  # value in .env.example
 _ENV_PREFIX = "MAI_"
 
@@ -44,6 +47,13 @@ class Settings(BaseSettings):
     aws_region: str = Field("ap-southeast-1", validation_alias=AliasChoices("AWS_REGION"))
     upload_concurrency: PositiveInt = 8
     clip_padding_ms: NonNegativeInt = 150
+    max_in_flight: PositiveInt = 10  # per process; run one uvicorn worker
+    # Defaults come from the deployment doc's initial time budget; tune after the benchmark.
+    stage_estimate_download_seconds: _Finite[NonNegativeFloat] = 15.0
+    stage_estimate_upload_seconds: _Finite[NonNegativeFloat] = 10.0
+    stage_estimate_lane_seconds: _Finite[PositiveFloat] = 75.0  # when a worker has no average
+    stats_cache_seconds: _Finite[NonNegativeFloat] = 1.0
+    dependency_timeout_seconds: _Finite[PositiveFloat] = 2.0
 
     @field_validator("api_key")
     @classmethod

@@ -11,7 +11,7 @@ The server is built in 7 phases. Each phase below says what to build, the decisi
 | 3 | Deadline, download, preprocessing | Done |
 | 4 | Worker contract and orchestration | Done |
 | 5 | Mini audio files (cut and upload) | Done |
-| 6 | Admission control and readiness | Not started |
+| 6 | Admission control and readiness | Done |
 | 7 | Packaging and local stack | Not started |
 
 ## How to work a phase
@@ -171,7 +171,7 @@ Decisions:
 
 **Done when.** Clips are cut and uploaded in tests (moto) and once against the real bucket; IAM permissions needed (`s3:PutObject` on the prefix, `s3:ListBucket`/`HeadBucket` for readiness) are documented. Status: implemented and tested with moto; IAM permissions are in [README.md](README.md). The one run against the real bucket is a manual check done outside the test suite.
 
-## Phase 6 — Admission control and readiness
+## Phase 6 — Admission control and readiness (done)
 
 **Goal.** Reject work the server cannot finish in time with an immediate 429, and report not-ready (503) until every dependency is up.
 
@@ -192,6 +192,15 @@ Decisions:
 - In-flight cap with more than one uvicorn worker process: the cap is per process. Recommendation: run one uvicorn worker (the server only does async I/O).
 
 **Done when.** 429 and 503 behave as above under test; defaults are documented with a note to tune them after the benchmark.
+
+**Decisions (Phase 6).**
+- D1 `create_app(settings, redis, processor, worker_stats, dependency_checks)`: `worker_stats` is an async `(lane) -> WorkerStats` (default: cached HTTP `GET <worker>/stats`); `dependency_checks` defaults to `audio_worker`, `video_worker`, `s3`, `ffmpeg`, and `redis` is always added.
+- D2 `/stats` unreachable, slow, non-200 or invalid → 503 `SERVICE_UNAVAILABLE` before the claim (fail closed).
+- D3 `estimate = download + max over lanes((q + 1) * avg) + upload`, with `q = max(worker queue_length, other requests in flight here)` and `avg` from the worker or `MAI_STAGE_ESTIMATE_LANE_SECONDS`. Reject when the estimate exceeds the remaining deadline; `Retry-After = max(1, ceil(estimate - remaining))`.
+- D4 `MAI_MAX_IN_FLIGHT` (default 10) per process, checked before the estimator; the slot is released in `finally`. One uvicorn worker is required.
+- D5 `last_request_at` and `started_at` in `/health/live` (ISO-8601 UTC); `last_request_at` is set for every authenticated, valid `POST /v1/analyses`, probes never set it.
+- D6 Readiness checks run concurrently, each bounded by `MAI_DEPENDENCY_TIMEOUT_SECONDS`; S3 uses `HeadBucket` (needs `s3:ListBucket`); ffmpeg checks both binaries.
+- D7 Stats cache per lane, TTL `MAI_STATS_CACHE_SECONDS` (default 1.0), single-flight, failures not cached.
 
 ## Phase 7 — Packaging and local stack
 

@@ -1,8 +1,10 @@
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, Response, Security
 
+from ..admission import Admission
 from ..auth import api_key_scheme
 from ..config import Settings
 from ..deadline import Deadline, deadline_var
@@ -38,6 +40,7 @@ async def create_analysis(
     deadline = Deadline(settings.request_deadline_seconds)
     deadline_var.set(deadline)
     request_id_var.set(str(body.request_id))
+    request.app.state.last_request_at = datetime.now(UTC)  # any outcome
     logger.info(
         "analysis received",
         extra={
@@ -51,20 +54,27 @@ async def create_analysis(
     if stored is not None:
         return _replay(stored, response)
 
-    # Phase 6: admission control (429 when saturated) slots in here, before claiming.
-
-    claimed = await store.claim(body)
-    if isinstance(claimed, AnalysisResponse):  # another request finished while we were claiming
-        return _replay(claimed, response)
-
-    timeout = asyncio.timeout(deadline.remaining())
+    # Admission: take an in-flight slot (429 at the cap), then check the estimate (429/503).
+    # Nothing is claimed yet, so a rejected request can be retried with the same request_id.
+    admission: Admission = request.app.state.admission
+    admission.acquire()
     try:
-        async with timeout:
-            result = await request.app.state.processor(body, settings)
-    except BaseException as exc:  # includes cancellation; errors are never cached
-        await store.release(body, claimed)
-        if isinstance(exc, TimeoutError) and timeout.expired():
-            raise MAIError(ErrorCode.TIMEOUT, "The request deadline was exceeded.") from exc
-        raise
-    await store.complete(body, claimed, result)
-    return result
+        await admission.check_deadline(deadline)
+
+        claimed = await store.claim(body)
+        if isinstance(claimed, AnalysisResponse):  # another request finished while we were claiming
+            return _replay(claimed, response)
+
+        timeout = asyncio.timeout(deadline.remaining())
+        try:
+            async with timeout:
+                result = await request.app.state.processor(body, settings)
+        except BaseException as exc:  # includes cancellation; errors are never cached
+            await store.release(body, claimed)
+            if isinstance(exc, TimeoutError) and timeout.expired():
+                raise MAIError(ErrorCode.TIMEOUT, "The request deadline was exceeded.") from exc
+            raise
+        await store.complete(body, claimed, result)
+        return result
+    finally:
+        admission.release()

@@ -3,7 +3,7 @@
 import logging
 
 import pytest
-from conftest import API_KEY, fake_processor
+from conftest import API_KEY, fake_processor, idle_worker_stats
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -75,7 +75,13 @@ def test_rejects_negative_padding(monkeypatch):
 
 
 async def _startup_warnings(settings, redis, log_records) -> list[str]:
-    app = create_app(settings, redis=redis, processor=fake_processor)
+    app = create_app(
+        settings,
+        redis=redis,
+        processor=fake_processor,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
     # create_app replaces the root handlers; put the capture handler back.
     logging.getLogger().addHandler(log_records.handler)
     async with app.router.lifespan_context(app):

@@ -68,6 +68,13 @@ async def fake_processor(body: AnalysisRequest, settings: Settings) -> AnalysisR
     return fake_analysis(body, settings)
 
 
+async def idle_worker_stats(lane: str):
+    """Worker stats source for tests that are not about admission: nothing queued."""
+    from app.admission import WorkerStats
+
+    return WorkerStats(queue_length=0, avg_processing_seconds=None)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep a developer's MAI_* shell variables from leaking into tests."""
@@ -79,7 +86,13 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def settings() -> Settings:
     # _env_file=None: ignore a local server/.env.
-    return Settings(_env_file=None, api_key=API_KEY)  # type: ignore[call-arg]
+    return Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        api_key=API_KEY,
+        stage_estimate_download_seconds=0,
+        stage_estimate_upload_seconds=0,
+        stage_estimate_lane_seconds=0.001,
+    )
 
 
 @pytest.fixture
@@ -116,7 +129,13 @@ def redis(redis_server: fakeredis.FakeServer) -> fakeredis.aioredis.FakeRedis:
 
 @pytest.fixture
 def app(settings: Settings, redis):
-    return create_app(settings, redis=redis, processor=fake_processor)
+    return create_app(
+        settings,
+        redis=redis,
+        processor=fake_processor,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
 
 
 @pytest.fixture

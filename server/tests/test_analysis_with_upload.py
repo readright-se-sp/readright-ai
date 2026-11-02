@@ -8,7 +8,7 @@ import httpx
 import pytest
 import respx
 from audio_helpers import BUCKET, REGION, expected_range, read_wav_bytes, use_fake_aws, write_wav
-from conftest import valid_body
+from conftest import idle_worker_stats, valid_body
 from lane_helpers import (
     REQUEST_ID,
     audio_payload,
@@ -156,7 +156,13 @@ async def test_pipeline_does_not_return_a_result_when_upload_fails(
 
 @pytest.fixture
 def app(settings, redis):
-    return create_app(settings, redis=redis, processor=pipeline_processor)
+    return create_app(
+        settings,
+        redis=redis,
+        processor=pipeline_processor,
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ import fakeredis
 import fakeredis.aioredis
 import httpx
 import pytest
-from conftest import fake_analysis, valid_body
+from conftest import fake_analysis, idle_worker_stats, valid_body
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -367,7 +367,12 @@ async def test_redis_url_password_never_leaks(auth, caplog):
     assert URL_PASSWORD not in str(settings)
 
     server = fakeredis.FakeServer()
-    app = create_app(settings, redis=fakeredis.aioredis.FakeRedis(server=server))
+    app = create_app(
+        settings,
+        redis=fakeredis.aioredis.FakeRedis(server=server),
+        worker_stats=idle_worker_stats,
+        dependency_checks={},
+    )
     # configure_logging() replaces the root handlers, so attach caplog's directly.
     root = logging.getLogger()
     root.addHandler(caplog.handler)
