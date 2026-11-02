@@ -59,8 +59,8 @@ def run(heard_text, recogniser=None):
 
 
 def test_contract_version_is_6():
-    assert CONTRACT_VERSION == "6"
-    assert run(TEXT)["version"] == "6"
+    assert CONTRACT_VERSION == "7"
+    assert run(TEXT)["version"] == "7"
 
 
 def test_without_a_reviewer_the_output_equals_analyze_and_has_no_phonetic_field():
