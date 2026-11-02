@@ -78,6 +78,10 @@ INVENTORY: frozenset[str] = frozenset(
     }
 )
 
+VOWELS: frozenset[str] = frozenset(
+    {*"aiou", *"æɑɔəɛɜɪʊʌɚ", "eɪ", "aɪ", "ɔɪ", "aʊ", "oʊ"}
+)  # a consonant is any other INVENTORY symbol (n̩ included)
+
 _warned: set[str] = set()
 
 

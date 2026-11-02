@@ -29,7 +29,7 @@ path = "src/audio/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/audio"]
-include = ["src/audio/phonetics/data/*.yaml"]
+include = ["src/audio/phonetics/data/*.yaml", "src/audio/phonetics/data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

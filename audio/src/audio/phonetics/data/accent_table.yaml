@@ -1,0 +1,40 @@
+# Spec §6. Version-controlled data; B6 calibrates the numbers.
+costs:
+  accent: 0.1               # an accent pair below (spec 6.4: θ→t is low, not zero)
+  final_cluster_drop: 0.2   # deleting the last consonant of a word-final cluster (test → tes)
+  substitution_floor: 0.4   # any other substitution: floor + (1 − floor) × feature distance
+  indel: 1.0                # any other insertion or deletion
+# [expected, heard]. One direction only; list both directions when both apply.
+pairs:
+  # spec 6.2
+  - [f, p]
+  - [v, b]
+  - [θ, t]
+  - [ð, d]
+  - [z, s]
+  - [ʒ, ʃ]
+  # spec 6.2 additional features
+  - [ɪ, i]
+  - [i, ɪ]
+  - [ʊ, u]
+  - [u, ʊ]
+  - [æ, a]
+  - [æ, ɛ]
+  # reduced schwa: ə heard as a full vowel
+  - [ə, a]
+  - [ə, ɛ]
+  - [ə, e]
+  - [ə, i]
+  - [ə, ɪ]
+  - [ə, o]
+  - [ə, ɔ]
+  - [ə, u]
+  - [ə, ʊ]
+  - [ə, ʌ]
+  - [ə, ɑ]
+  - [ə, æ]
+  # beyond spec: Philippine English monophthongs and tapped r
+  - [eɪ, e]
+  - [eɪ, ɛ]
+  - [oʊ, o]
+  - [ɹ, ɾ]

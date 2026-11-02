@@ -254,6 +254,14 @@ Deviation = tuple[
 ]
 
 
+class Comparison(_Model):
+    """Best-variant result of Compare (B4)."""
+
+    distance: Distance
+    best_variant_index: Annotated[int, Field(ge=0)]
+    deviations: tuple[Deviation, ...]
+
+
 class WordVerdict(_Model):
     unit_index: Annotated[int, Field(ge=0)]
     expected_phonemes: tuple[PhoneSeq, ...]
