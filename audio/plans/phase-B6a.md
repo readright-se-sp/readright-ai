@@ -100,6 +100,11 @@ Runs from the Step 1 cache only, with no model loads.
 
 **Hold-out.** Use 6 recordings for selection and 3 for confirmation, split by passage so no passage is in both. Choose the split once, record it, and don't change it. Report FOR and coverage on the held-out 3 and don't tune on them.
 
+**The split (fixed 2026-11-02, before any sweep; do not change).** The 9 recordings cover 6 passages: `every_saturday` (3 recordings), `marian_came` (2), `a_mouse_and_a`, `mama_was`, `nick_is_a_tri`, `ring_ring` (1 each).
+- **Selection (6):** the 3 `every_saturday` recordings, `a_mouse_and_a`, `mama_was`, `ring_ring`.
+- **Held-out (3):** the 2 `marian_came` recordings and `nick_is_a_tri`.
+- No passage is in both sets. Recording stems (prefix of the file name) are the ids: selection `everysatur*`, `amouseanda*`, `mamawas*`, `ringringra*`; held-out `mariancame*`, `nickisatri*`.
+
 **Output:** `audio/devtools/out/sweep_join.csv` (git-ignored), with the top 10 configs and the chosen one copied into this file under "Results".
 
 **Hand-checked set.** Store the I1 hand-checked rows as `audio/tests/fixtures/handchecked_i1.yaml`. These are recording ids, passage index, expected final label and note only, no audio. Turn them into a regression test that runs from the cache, skipped if the cache is missing. The rows known to be wrong today (jacky, cups, mongo) are marked `xfail` with reason "B6b".
