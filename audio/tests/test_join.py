@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from audio.lane_b.join import join
 from audio.types import JoinResult, PassageToken, PhonemeToken, PreparedPassage, Unit
 
-KW = dict(pad_ms=80, coverage_min_ms=120, coverage_max_gap_ms=300)
+KW = dict(max_reach_ms=80, coverage_min_ms=120, coverage_max_gap_ms=300)
 
 # keys: a (2 or 3 phonemes), b (1), c (2)
 PASSAGE = PreparedPassage(
@@ -55,11 +55,11 @@ def run(units, phonemes, **kw):
     return join(units, phonemes, PASSAGE, **{**KW, **kw})
 
 
-def test_inside_padding_and_outside():
+def test_inside_reach_and_outside():
     u = [unit(1000, 2000)]
-    inside, padded, outside = ph(1400, 1420), ph(2040, 2060), ph(2150, 2170)
-    r = run(u, [inside, padded, outside])
-    assert r.unit_phonemes == ((inside, padded),)
+    inside, reached, outside = ph(1400, 1420), ph(2040, 2060), ph(2150, 2170)
+    r = run(u, [inside, reached, outside])
+    assert r.unit_phonemes == ((inside, reached),)
     assert r.discarded == (outside,)  # 20 ms run, shorter than the minimum
 
 
@@ -185,7 +185,7 @@ def test_join_result_rejects_mismatched_lengths():
 
 
 def mid(units, phonemes, reach=300, **kw):
-    return run(units, phonemes, mode="midpoint", max_reach_ms=reach, **kw)
+    return run(units, phonemes, max_reach_ms=reach, **kw)
 
 
 def owners(r, phonemes):
@@ -257,10 +257,3 @@ def test_midpoint_every_phoneme_has_exactly_one_owner():
     out = [p for g in r.unit_phonemes for p in g]
     out += [p for c in r.coverage_candidates for p in c.phonemes] + list(r.discarded)
     assert sorted(out, key=lambda p: p.start_ms) == ps
-
-
-def test_pad_mode_is_the_old_rule():
-    ps = [ph(2040, 2060), ph(2150, 2170)]
-    pad = run([A, B], ps, pad_ms=80)
-    assert owners(pad, ps) == [0, None]  # 2060 mid is 60 past A (inside 80); 2160 is 160 past
-    assert pad == run([A, B], ps, pad_ms=80, mode="pad")

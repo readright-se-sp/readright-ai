@@ -26,7 +26,7 @@ ReadingLevel: TypeAlias = Literal["Independent", "Instructional", "Frustration"]
 ColumnOp: TypeAlias = Literal["match", "sub", "del", "ins", "rep", "swp", "mid", "off"]
 
 # Bump with any change to the response shape (contracts/audio-service.md).
-CONTRACT_VERSION = "5"
+CONTRACT_VERSION = "6"
 
 # Phil-IRI 2018 counted miscues. Everything else is recorded but never scored.
 COUNTED_TAGS: frozenset[Tag] = frozenset(

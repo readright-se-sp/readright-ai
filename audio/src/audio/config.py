@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,13 +16,16 @@ class AudioSettings(BaseSettings):
         extra="ignore",
     )
 
-    ASR_MODEL: str = "models/crisper2_large_ct2"  # CTranslate2 conversion of nyralabs/CrisperWhisper2.0_large
+    ASR_MODEL: str = (
+        "models/crisper2_large_ct2"  # CTranslate2 conversion of nyralabs/CrisperWhisper2.0_large
+    )
     ASR_DEVICE: str = "cuda"
     ASR_COMPUTE_TYPE: str = "float16"  # int8 on CPU
     ASR_BATCH_SIZE: int = 8
 
-    # Lane B (phonetic lane). PHONETIC_ENABLED=false runs Lane A alone (no phoneme model is loaded).
-    PHONETIC_ENABLED: bool = True
+    # Lane B (phonetic lane). PHONETIC_ENABLED=false (the default until B6b shows Lane B beats
+    # Lane A against teacher labels) runs Lane A alone and loads no phoneme model.
+    PHONETIC_ENABLED: bool = False
 
     # Stage 0 passage preparation (espeak-ng).
     ESPEAK_LANGUAGE: str = "en-us"  # espeak voice
@@ -38,17 +41,20 @@ class AudioSettings(BaseSettings):
     PHONEME_CHUNK_S: float = 20  # audio per forward pass
     PHONEME_CONTEXT_S: float = 2  # extra audio each side of a chunk; its frames are discarded
 
-    # Join by time (B3). Starting values; B6 measures them.
-    JOIN_MODE: Literal["midpoint", "pad"] = "midpoint"  # window rule, see lane_b/join.py
-    JOIN_PAD_MS: int = 50  # pad mode only
-    JOIN_MAX_REACH_MS: int = 200  # midpoint mode: furthest a unit reaches into a gap or past ends
+    # Join by time (B3, B6a). Values chosen by the B6a sweep (plans/phase-B6a.md).
+    JOIN_MAX_REACH_MS: int = 150  # furthest a unit's window reaches into a gap or past either end
     COVERAGE_MIN_MS: int = 120
     COVERAGE_MAX_GAP_MS: int = 300  # silence that ends a coverage run
 
-    # Arbitration (B5). Starting values; B6 tunes them (spec section 9: measure, do not guess).
-    COVERAGE_GUARD_RATIO: float = 0.5  # CORRECT is overruled only if >= this share of phonemes heard
-    SHORT_WORD_MAX_PHONES: int = 0  # CORRECT words this short are never overruled (0 = off)
-    ADAPTIVE_OVERRULE: bool = True  # longer overrule threshold for short words with one extra phoneme
+    # Arbitration (B5, B6a). The guard, short-word and adaptive values come from the B6a sweep;
+    # T_FLAG and T_OVERRULE are still starting values for B6b (needs labels).
+    COVERAGE_GUARD_RATIO: float = (
+        1.0  # CORRECT is overruled only if >= this share of phonemes heard
+    )
+    SHORT_WORD_MAX_PHONES: int = 3  # CORRECT words this short are never overruled (0 = off)
+    ADAPTIVE_OVERRULE: bool = (
+        True  # longer overrule threshold for short words with one extra phoneme
+    )
     T_FLAG: float = 0.25
     T_OVERRULE: float = 0.45
 

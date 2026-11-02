@@ -114,7 +114,7 @@ def main() -> None:
     if not wavs:
         sys.exit(f"No WAV files in {DATA}")
 
-    settings = AudioSettings()
+    settings = AudioSettings(PHONETIC_ENABLED=not args.no_phonetic)
     import torch
 
     cuda = torch.cuda.is_available()

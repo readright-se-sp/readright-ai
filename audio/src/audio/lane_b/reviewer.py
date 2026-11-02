@@ -216,8 +216,6 @@ class PhoneticReviewer:
             adapted.lane_a.units,
             phonemes,
             passage,
-            pad_ms=s.JOIN_PAD_MS,
-            mode=s.JOIN_MODE,
             max_reach_ms=s.JOIN_MAX_REACH_MS,
             coverage_min_ms=s.COVERAGE_MIN_MS,
             coverage_max_gap_ms=s.COVERAGE_MAX_GAP_MS,

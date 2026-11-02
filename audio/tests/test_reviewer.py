@@ -32,6 +32,9 @@ TABLE = {
     "buy": ("b", "aɪ"),
 }
 
+# Tuning values pinned here so these tests stay about behaviour, not about the B6a defaults.
+TEST_SETTINGS = AudioSettings(_env_file=None, COVERAGE_GUARD_RATIO=0.5, SHORT_WORD_MAX_PHONES=0)
+
 
 class FakeRecogniser:
     def __init__(self, tokens=(), exc: Exception | None = None) -> None:
@@ -61,7 +64,7 @@ def reviewer(tokens=(), exc=None):
             rec,
             PassagePreparer(FakeG2P(TABLE)),
             PassagePreparer(FakeG2P(TABLE), cache_size=0),
-            AudioSettings(_env_file=None),
+            TEST_SETTINGS,
         ),
         rec,
     )
@@ -229,7 +232,7 @@ def test_g2p_failure_is_skipped_not_raised(caplog):
         rec,
         PassagePreparer(Failing()),
         PassagePreparer(Failing(), cache_size=0),
-        AudioSettings(_env_file=None),
+        TEST_SETTINGS,
     )
     rows = [row("match", "cat", "cat", 0.0, 0.5, [0])]
     with caplog.at_level(logging.WARNING):
@@ -318,3 +321,18 @@ def test_a_low_coverage_overrule_is_blocked_with_a_reason():
     (out,) = rev.review("a.wav", rows, ctx("fish"))
     assert out["tag"] == "match"
     assert (out["phonetic"]["check"], out["phonetic"]["reason"]) == ("unverifiable", "low_coverage")
+
+
+def test_default_settings_never_overrule_a_short_word():
+    # B6a defaults: SHORT_WORD_MAX_PHONES=3 protects a 3-phoneme word even when little was heard
+    rows = [row("match", "fish", "fish", 0.0, 0.5, [0])]
+    rec = FakeRecogniser(heard(("f",), 0), None)
+    rev = PhoneticReviewer(
+        rec,
+        PassagePreparer(FakeG2P(TABLE)),
+        PassagePreparer(FakeG2P(TABLE), cache_size=0),
+        AudioSettings(_env_file=None),
+    )
+    (out,) = rev.review("a.wav", rows, ctx("fish"))
+    assert out["tag"] == "match"
+    assert (out["phonetic"]["check"], out["phonetic"]["reason"]) == ("unverifiable", "short_word")

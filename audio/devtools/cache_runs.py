@@ -47,7 +47,7 @@ def main() -> None:
     )
     if not wavs:
         sys.exit(f"No WAV files in {DATA}")
-    settings = AudioSettings()
+    settings = AudioSettings(PHONETIC_ENABLED=True)  # a measurement tool: Lane B is needed
     models = model_ids(settings)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -355,7 +355,7 @@ def run_recording(
         lane_a.units,
         phoneme_tokens,
         passage,
-        pad_ms=settings.JOIN_PAD_MS,
+        max_reach_ms=settings.JOIN_MAX_REACH_MS,
         coverage_min_ms=settings.COVERAGE_MIN_MS,
         coverage_max_gap_ms=settings.COVERAGE_MAX_GAP_MS,
     )

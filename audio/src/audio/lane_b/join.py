@@ -1,26 +1,16 @@
 """Join by time (spec 5.6 step 2): give each phoneme to one unit or one coverage candidate.
 
-Each timed unit has a window. ``pad`` mode: the unit's span plus a fixed pad each side (B3).
-``midpoint`` mode (B6a): the span, extended into each gap to the neighbouring unit by at most half
-the gap (so the gap is split at its midpoint) and at most ``max_reach_ms``. The first and last unit
-reach ``max_reach_ms`` outward. Phonemes outside every window are coverage candidates or discarded.
+Each timed unit has a window: its span, extended into each gap to the neighbouring unit by at most
+half the gap (so the gap is split at its midpoint) and at most ``max_reach_ms``. The first and last
+unit reach ``max_reach_ms`` outward. (B3's fixed pad was removed in B6a: it measured no better.)
+Phonemes outside every window are coverage candidates or discarded.
 """
 
 from collections.abc import Sequence
-from typing import Literal
 
 from audio.types import CoverageCandidate, JoinResult, PhonemeToken, PreparedPassage, Unit
 
 Window = tuple[float, float] | None  # (low, high) in ms, None for an untimed unit
-
-
-def _pad_windows(units: Sequence[Unit], pad_ms: int) -> list[Window]:
-    return [
-        (u.start_ms - pad_ms, u.end_ms + pad_ms)
-        if u.start_ms is not None and u.end_ms is not None
-        else None
-        for u in units
-    ]
 
 
 def _midpoint_windows(units: Sequence[Unit], max_reach_ms: int) -> list[Window]:
@@ -89,15 +79,11 @@ def join(
     phonemes: Sequence[PhonemeToken],
     passage: PreparedPassage,
     *,
-    pad_ms: int,
     coverage_min_ms: int,
     coverage_max_gap_ms: int,
-    mode: Literal["pad", "midpoint"] = "pad",
-    max_reach_ms: int = 200,
+    max_reach_ms: int = 150,
 ) -> JoinResult:
-    windows = (
-        _pad_windows(units, pad_ms) if mode == "pad" else _midpoint_windows(units, max_reach_ms)
-    )
+    windows = _midpoint_windows(units, max_reach_ms)
     per_unit: list[list[PhonemeToken]] = [[] for _ in units]
     candidates: list[CoverageCandidate] = []
     discarded: list[PhonemeToken] = []

@@ -39,8 +39,8 @@ def test_replay_without_phonetic_is_lane_a_only(espeak_g2p):
 
 def test_settings_overrides_reach_the_reviewer(espeak_g2p):
     base = AudioSettings(_env_file=None)
-    assert with_overrides(base, JOIN_PAD_MS=150).JOIN_PAD_MS == 150
-    assert with_overrides(base, JOIN_PAD_MS=150).T_FLAG == base.T_FLAG
+    assert with_overrides(base, JOIN_MAX_REACH_MS=100).JOIN_MAX_REACH_MS == 100
+    assert with_overrides(base, JOIN_MAX_REACH_MS=100).T_FLAG == base.T_FLAG
 
 
 @pytest.mark.skipif(

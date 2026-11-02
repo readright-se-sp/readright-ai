@@ -9,8 +9,12 @@ correct read, so a Lane A `match` row that Lane B changes is a false overrule.
 Selection rule (plans/phase-B6a.md, fixed before looking), on the SELECTION recordings only:
   1. among configs with coverage >= 85%, take the lowest FOR;
   2. configs within 0.5 percentage points of it: take the highest coverage;
-  3. then prefer midpoint over pad, guard off over on, adaptive overrule off over on.
+  3. then prefer guard off over on, adaptive overrule off over on, short-word rule 0 before 2
+     before 3 (simpler wins).
 The HELD-OUT recordings are only reported, never used to choose.
+
+Round 1 and round 2 also compared the fixed-pad window rule; it was removed (it measured no better
+than midpoint), so those grids now cover midpoint windows only.
 
     uv run python devtools/cache_runs.py     # once
     uv run python devtools/sweep_join.py     # writes devtools/out/sweep_join.csv
@@ -68,19 +72,9 @@ class Tally:
 def grid() -> list[dict[str, Any]]:
     configs: list[dict[str, Any]] = []
     for guard, adaptive in itertools.product((0.0, 0.34, 0.5, 0.67), (True, False)):
-        for pad in (50, 100, 150, 200):
-            configs.append(
-                {
-                    "JOIN_MODE": "pad",
-                    "JOIN_PAD_MS": pad,
-                    "COVERAGE_GUARD_RATIO": guard,
-                    "ADAPTIVE_OVERRULE": adaptive,
-                }
-            )
         for reach in (100, 150, 200, 300):
             configs.append(
                 {
-                    "JOIN_MODE": "midpoint",
                     "JOIN_MAX_REACH_MS": reach,
                     "COVERAGE_GUARD_RATIO": guard,
                     "ADAPTIVE_OVERRULE": adaptive,
@@ -91,10 +85,7 @@ def grid() -> list[dict[str, Any]]:
 
 def grid_round2() -> list[dict[str, Any]]:
     """Step 4b (plans/phase-B6a.md, "Plan change"): adaptive overrule on only."""
-    windows: list[dict[str, Any]] = [
-        {"JOIN_MODE": "pad", "JOIN_PAD_MS": p} for p in (100, 150, 200)
-    ]
-    windows += [{"JOIN_MODE": "midpoint", "JOIN_MAX_REACH_MS": r} for r in (100, 150, 200)]
+    windows: list[dict[str, Any]] = [{"JOIN_MAX_REACH_MS": r} for r in (100, 150, 200)]
     return [
         {
             **w,
@@ -109,11 +100,7 @@ def grid_round2() -> list[dict[str, Any]]:
 
 
 def name(cfg: dict[str, Any]) -> str:
-    window = (
-        f"pad{cfg['JOIN_PAD_MS']}"
-        if cfg["JOIN_MODE"] == "pad"
-        else f"mid{cfg['JOIN_MAX_REACH_MS']}"
-    )
+    window = f"mid{cfg['JOIN_MAX_REACH_MS']}"
     adaptive = "on" if cfg["ADAPTIVE_OVERRULE"] else "off"
     short = cfg.get("SHORT_WORD_MAX_PHONES", 0)
     suffix = f" short{short}" if "SHORT_WORD_MAX_PHONES" in cfg else ""
@@ -166,7 +153,6 @@ def select(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     return min(
         tied,
         key=lambda r: (
-            r["JOIN_MODE"] != "midpoint",  # midpoint first
             r["COVERAGE_GUARD_RATIO"] > 0,  # guard off first
             bool(r["ADAPTIVE_OVERRULE"]),  # adaptive off first
             r.get("SHORT_WORD_MAX_PHONES", 0),  # 0 before 2 before 3
@@ -197,8 +183,6 @@ def main() -> None:
         rows.append(
             {
                 **cfg,
-                "JOIN_PAD_MS": cfg.get("JOIN_PAD_MS", ""),
-                "JOIN_MAX_REACH_MS": cfg.get("JOIN_MAX_REACH_MS", ""),
                 "SHORT_WORD_MAX_PHONES": cfg.get("SHORT_WORD_MAX_PHONES", 0),
                 "name": name(cfg),
                 "sel_for": sel.false_overrule_rate,
@@ -241,10 +225,6 @@ def main() -> None:
     for r in ranked[:10]:
         print(" ", line(r))
     chosen = select(rows)
-    baseline = next((r for r in rows if r["name"] == "pad50 guard0.0 adaptive=on"), None)
-    if baseline:
-        print("\nI1 baseline (pad50 guard0 adaptive on):")
-        print(" ", line(baseline))
     if chosen is None:
         print("\nNO CONFIG reaches coverage >= 85% on the selection set")
         return

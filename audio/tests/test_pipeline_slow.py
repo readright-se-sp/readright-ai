@@ -28,7 +28,7 @@ def test_full_pipeline_on_one_recording(espeak_g2p):
     wavs = sorted((ROOT / "data").glob("ring*.wav"))
     if not wavs:
         pytest.skip("no recording in audio/data/ (student audio is not in git)")
-    settings = AudioSettings(_env_file=None)
+    settings = AudioSettings(_env_file=None, PHONETIC_ENABLED=True)
     if not (ROOT / settings.ASR_MODEL).exists():
         pytest.skip(f"ASR model not found at {settings.ASR_MODEL}")
 
@@ -40,7 +40,7 @@ def test_full_pipeline_on_one_recording(espeak_g2p):
 
     result = pipeline.run(str(wavs[0]), passage)
 
-    assert result["version"] == "5"
+    assert result["version"] == "6"
     judged = [w for w in result["words"] if "phonetic" in w]
     assert judged, "Lane B judged no rows"
     assert any(w["phonetic"]["check"] == "done" for w in judged)
