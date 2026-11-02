@@ -1,0 +1,120 @@
+[
+  {
+    "id": "sample1_red_kite",
+    "passage": "Ben has a red kite. Every Saturday he goes to the park with his father. The wind is strong near the big tree. Ben runs fast and lets the string go up. The kite flies high above the houses. A little girl named Rosa watches from a bench. She wants to fly a kite too, but she does not have one. Ben was happy to share. He gives the string to Rosa and shows her how to hold it. Rosa laughs when the kite dips and turns. Soon the sun begins to set. Ben and Rosa walk home together. They plan to come back next week with two kites.",
+    "heard": "Ben has a red kite. Every Saturday he goes to the park with his fat- father. The wind is strong near the big tree. Ben runs, Ben runs fast and lets the long string go up. The kite flies high aboov the houses. A girl named Rosa watches from a chair. She wants to fly a kite too, but she does not have one. Ben saw happy to share. He gives the string to Rosa and shows her how to hold it. Rosa laughs when the kite dips and turns. Soon the sun begins to set. Ben and Rosa walk together home. They plan to come back next week with two kites.",
+    "expected": {
+      "mispronunciation": 1,
+      "substitution": 1,
+      "omission": 1,
+      "insertion": 1,
+      "repetition": 1,
+      "reversal": 1,
+      "self_correction": 0,
+      "false_start": 1,
+      "filler": 0,
+      "swap": 1,
+      "moved": 0,
+      "error_count": 7
+    }
+  },
+  {
+    "id": "sample2_market_day",
+    "passage": "On Sunday morning, Lola Nena takes Mia to the market. The market is crowded and noisy. Vendors call out the prices of fresh fish, ripe mangoes, and green vegetables. Mia holds her grandmother's hand so she will not get lost. They stop at a stall that sells warm pandesal. The baker smiles and gives Mia an extra piece. Next, they buy rice, eggs, and a small bag of sugar. Lola Nena counts her coins carefully. On the way home, the basket feels heavy, so Mia helps carry it. When they arrive, Mia's mother is already cooking lunch. The kitchen smells of garlic and onions. Mia sets the table while Lola Nena tells a story about the market long ago.",
+    "heard": "No Sunday morning, Lola Nena takes Mia to the market. The market is crowdid and noisy. Vendors call out the prices of fish fresh, mangoes, and green vegetables. Mia holds her grandmother's hand so she will not get lost. They stop at a table that sells warm pan de sal. The baker, the baker smiles and gives Mia an extra big piece. Next, they buy rice, eggs, and a small bag of sugar. Lola Nena coats... counts her coins carefully. On the way home, the basket feels big, so Mia helps carry it. When they arrive, Mia's mother is cooking lunch. The kitchen smells of garlic and onions. Mia sets the table while Lola Nena tells a story about the market long ago.",
+    "expected": {
+      "mispronunciation": 1,
+      "substitution": 2,
+      "omission": 2,
+      "insertion": 1,
+      "repetition": 1,
+      "reversal": 1,
+      "self_correction": 1,
+      "false_start": 0,
+      "filler": 0,
+      "swap": 1,
+      "moved": 0,
+      "error_count": 9
+    }
+  },
+  {
+    "id": "sample4_typhoons",
+    "passage": "Typhoons are powerful storms that form over warm ocean water. The Philippines experiences about twenty typhoons every year, and some of them cause serious damage. Strong winds can tear roofs from houses and knock down electric posts. Heavy rain often leads to floods and landslides, especially in mountain areas. Before a typhoon arrives, the weather bureau announces storm signals so that families can prepare. People store clean water, canned goods, flashlights, and extra batteries. Those living near the coast may need to move to evacuation centers. After the storm passes, neighbors work together to clear debris and repair what was destroyed. Learning how to prepare for typhoons helps communities stay safe.",
+    "heard": "Typhoons are powerful storms that form over warm blue ocean water. The Philippines experens about 20 typhoons every year, and some of them cause damage. Strong winds, strong winds can pull roofs from houses and push down posts. Heavy rain often leads to floods and lands... landslides. Before a typhoon arrives, the weather bureau announces storm signals... singles so that families can, can prepare. People stay water clean, canned goods, flashlights, and extra batteries. Those living near the cost may need to move to evacution centers. After the storm passes, the neighbors work together to clear debris and repair what saw destroyed. Learning how to prepare for typhoons helps communities stay safe.",
+    "expected": {
+      "mispronunciation": 4,
+      "substitution": 3,
+      "omission": 6,
+      "insertion": 2,
+      "repetition": 2,
+      "reversal": 1,
+      "self_correction": 0,
+      "false_start": 1,
+      "filler": 0,
+      "swap": 1,
+      "moved": 0,
+      "error_count": 19
+    }
+  },
+  {
+    "id": "sample5_photosynthesis",
+    "passage": "Plants are remarkable living things because they can produce their own food. This process, called photosynthesis, takes place mainly in the leaves. Inside the leaves are tiny structures called chloroplasts, which contain a green pigment known as chlorophyll. Chlorophyll absorbs energy from sunlight. The plant combines this energy with water drawn up from the roots and carbon dioxide taken in from the air. Through a series of chemical reactions, it produces glucose, a type of sugar, and releases oxygen into the air. Animals and humans depend on this oxygen to breathe. Without photosynthesis, life on Earth as we know it would not be possible.",
+    "heard": "Plants are remarkable growing things because they can, they can produce their food own. This process, called photosynthesis, place takes in the trees. Inside the, inside the leaves are structures called chloroplast, which have a green color pigment known as chlorophyll. The plant, the plant combines this energy with water form the roots and um carbon dioxide taken in form the air. Through a lot of chemical reactions, it produces glucose, a type of sugar, and releases ox- oxygen into the air. The animals and the humans need on this oxygen to breathe. Without, without photosynthesis, life on world as we it know would not be possible at all.",
+    "expected": {
+      "mispronunciation": 1,
+      "substitution": 6,
+      "omission": 9,
+      "insertion": 4,
+      "repetition": 4,
+      "reversal": 0,
+      "letter_transposition": 2,
+      "self_correction": 0,
+      "false_start": 1,
+      "filler": 1,
+      "swap": 3,
+      "moved": 0,
+      "error_count": 29
+    }
+  },
+  {
+    "id": "team_manuel_market",
+    "note": "Team notebook example. his->see and Saturday->Sat need Lane B to be called reversal/what the team intends; letters alone give substitution. Manuel->nuelMa is letters out of order (not a full flip), so it's letter_transposition, as the team key said.",
+    "passage": "Every Saturday, Manuel goes to market with his father, Mang Ador, happily.",
+    "heard": "Um Every Every Sat nuelMa goose to the store width with see Mang Ador father.",
+    "expected": {
+      "mispronunciation": 1,
+      "substitution": 3,
+      "omission": 1,
+      "insertion": 1,
+      "repetition": 1,
+      "reversal": 0,
+      "letter_transposition": 1,
+      "self_correction": 1,
+      "false_start": 0,
+      "filler": 1,
+      "swap": 0,
+      "moved": 1,
+      "error_count": 9
+    }
+  },
+  {
+    "id": "team_small_girl",
+    "note": "Team notebook example. bad->dub is a sound reversal (dab); letters give substitution until Lane B.",
+    "passage": "The small girl saw a bad dog near the slide. She was happy to pet the brown puppy at the park.",
+    "heard": "The girl saw a dub cat near the slid. She happy was to pet to pet the very brown puppy at the pork park.",
+    "expected": {
+      "mispronunciation": 1,
+      "substitution": 2,
+      "omission": 1,
+      "insertion": 1,
+      "repetition": 1,
+      "reversal": 0,
+      "self_correction": 1,
+      "false_start": 0,
+      "filler": 0,
+      "swap": 1,
+      "moved": 0,
+      "error_count": 7
+    }
+  }
+]
