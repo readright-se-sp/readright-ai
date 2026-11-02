@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.venv
+.git
+models
+data
+plans
+tests
+devtools/out
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.pyright
