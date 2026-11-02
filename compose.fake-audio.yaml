@@ -1,0 +1,13 @@
+# For machines without an NVIDIA GPU: swaps the real audio worker for the server's fake one
+# (canned results, no models). Use it on top of compose.yaml:
+#   docker compose -f compose.yaml -f compose.override.yaml -f compose.fake-audio.yaml up -d --build
+# Needs Docker Compose 2.24 or newer (the !reset tag).
+services:
+  audio-worker:
+    build: ./server
+    image: readright-mai-server
+    command: uvicorn devtools.fake_workers:audio_app --host 0.0.0.0 --port 8001
+    environment: !reset null
+    deploy: !reset null
+    healthcheck:
+      start_period: 0s
