@@ -88,7 +88,7 @@ def test_api_key_is_a_required_interpolation_and_not_read_from_server_env_file(s
 
 @pytest.mark.parametrize(
     ("name", "app", "port"),
-    [("audio-worker", "audio_app", "8001"), ("video-worker", "video_app", "8002")],
+    [("audio-worker", "audio_app", "8001")],
 )
 def test_fake_workers_run_from_the_api_image(services, name, app, port):
     """Criterion 12."""

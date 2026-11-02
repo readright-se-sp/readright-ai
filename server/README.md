@@ -2,7 +2,7 @@
 
 The HTTP entry point of the MAI. It implements the BE ⇄ MAI contract in [`../contracts/be-mai-openapi.yaml`](../contracts/be-mai-openapi.yaml) (v1.1.1). See the [root README](../README.md) for how the whole system works.
 
-> **Current state (Phase 7):** the whole MAI runs with `docker compose up --build` from the repo root (Caddy, api, Redis, fake workers, moto server for S3); see [Run with Docker Compose](#run-with-docker-compose) and [Deploy to the instance](#deploy-to-the-instance). Behaviour of the API (Phase 6): `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) merges their results, then cuts one mini audio file per miscue and uploads it to S3 (see [Mini audio files](#mini-audio-files-s3)). A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)). An S3 bucket and AWS credentials are needed for requests with miscues. **Admission control** rejects work that cannot finish in time with `429 RATE_LIMITED` (`Retry-After` set), and `503 SERVICE_UNAVAILABLE` when a worker's `/stats` cannot be read.
+> **Current state (Phase 7):** the whole MAI runs with `docker compose up --build` from the repo root (Caddy, api, Redis, the fake audio worker, the real video lane, moto server for S3); see [Run with Docker Compose](#run-with-docker-compose) and [Deploy to the instance](#deploy-to-the-instance). Behaviour of the API (Phase 6): `POST /v1/analyses` checks the API key, validates the request, applies **idempotency** through Redis, downloads the video under a 115 s deadline (504 `TIMEOUT` on expiry), probes it and converts it to 16 kHz mono WAV (needs ffmpeg, see [Installing ffmpeg](#installing-ffmpeg)), then calls the **audio and video lanes** in parallel (contract: [`../contracts/worker-api.md`](../contracts/worker-api.md)) merges their results, then cuts one mini audio file per miscue and uploads it to S3 (see [Mini audio files](#mini-audio-files-s3)). A repeated `request_id` returns the stored result with `X-MAI-Replayed: true`; a duplicate while one is running gets `409 REQUEST_IN_PROGRESS`; the same `request_id` with a different passage gets `400 INVALID_REQUEST`. **Redis and both lanes are required** (see [Running Redis locally](#running-redis-locally) and [Fake workers](#fake-workers)). An S3 bucket and AWS credentials are needed for requests with miscues. **Admission control** rejects work that cannot finish in time with `429 RATE_LIMITED` (`Retry-After` set), and `503 SERVICE_UNAVAILABLE` when a worker's `/stats` cannot be read.
 
 ## Prerequisites
 
@@ -195,14 +195,14 @@ Tests that need real ffmpeg are skipped when it is missing.
 
 ## Fake workers
 
-Until the real lanes exist, run the fake workers (they implement [`../contracts/worker-api.md`](../contracts/worker-api.md)), each in its own terminal:
+Until the real audio lane exists, run the fake workers (they implement [`../contracts/worker-api.md`](../contracts/worker-api.md)), each in its own terminal:
 
 ```bash
 uv run uvicorn devtools.fake_workers:audio_app --port 8001
 uv run uvicorn devtools.fake_workers:video_app --port 8002
 ```
 
-The server finds them through `MAI_AUDIO_WORKER_URL` (default `http://localhost:8001`) and `MAI_VIDEO_WORKER_URL` (default `http://localhost:8002`). The audio fake reports a substitution on the first word and an omission on the third; the video fake reports both flags `false`. Set `FAKE_AUDIO_BEHAVIOR=ok|no_speech|error|slow` or `FAKE_VIDEO_BEHAVIOR=ok|error|slow` (and `FAKE_SLOW_SECONDS`, default 200) in a worker's environment to simulate failures; they are read on every request. The fakes read the files the server writes, so run the server and the fakes on the same machine.
+In `docker compose` only the audio fake runs (from the api image); the video lane is the real `video/` image. The video fake is still available for local runs. The server finds them through `MAI_AUDIO_WORKER_URL` (default `http://localhost:8001`) and `MAI_VIDEO_WORKER_URL` (default `http://localhost:8002`). The audio fake reports a substitution on the first word and an omission on the third; the video fake reports both flags `false`. Set `FAKE_AUDIO_BEHAVIOR=ok|no_speech|error|slow` or `FAKE_VIDEO_BEHAVIOR=ok|error|slow` (and `FAKE_SLOW_SECONDS`, default 200) in a worker's environment to simulate failures; they are read on every request. The fakes read the files the server writes, so run the server and the fakes on the same machine.
 
 ## Project layout
 
@@ -227,7 +227,7 @@ server/
 │   ├── readiness.py     # worker, S3 and ffmpeg readiness checks
 │   └── routes/          # analyses.py, health.py
 ├── devtools/            # fake_workers.py: fake audio/video lanes for local runs
-├── Dockerfile           # server image (also runs the fake workers)
+├── Dockerfile           # server image (also runs the fake audio worker)
 ├── .dockerignore
 ├── tests/
 ├── .env.example
@@ -245,7 +245,7 @@ docker compose up -d --build
 curl -k https://localhost/health/ready   # Caddy serves TLS from its internal CA, so use -k
 ```
 
-Plain `docker compose up` also loads `compose.override.yaml`, which adds a moto server as local S3 (published on `localhost:5000`, data lost on restart) and a one-shot `s3-init` that creates the bucket `readright-local`. The workers are the fake lanes from `devtools/`, run from the same image. Stop with `docker compose down` (volumes `redis-data`, `caddy_data` and `caddy_config` are kept).
+Plain `docker compose up` also loads `compose.override.yaml`, which adds a moto server as local S3 (published on `localhost:5000`, data lost on restart) and a one-shot `s3-init` that creates the bucket `readright-local`. The audio worker is the fake lane from `devtools/`, run from the api image; the video worker is the real lane built from `video/`. Stop with `docker compose down` (volumes `redis-data`, `caddy_data` and `caddy_config` are kept).
 
 End-to-end smoke test against the running stack (needs `ffmpeg` on the host):
 

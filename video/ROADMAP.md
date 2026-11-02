@@ -9,7 +9,7 @@ The video lane is built in 7 phases. Each phase below says what to build, the in
 | 1 | Project setup and worker contract layer | Done |
 | 2 | Frame decoding (ffprobe + ffmpeg) | Done |
 | 3 | MediaPipe landmarks and models | Done |
-| 4 | Packaging and compose | Not started |
+| 4 | Packaging and compose | Done |
 | 5 | Lack of expression | Not started |
 | 6 | Finger pointing | Not started |
 | 7 | Calibration, benchmark and docs | Not started |
@@ -302,7 +302,13 @@ class JobRunner:
 
 **Done when.** `docker compose up --build` serves `POST /v1/analyses` end to end with the real video lane and the fake audio lane.
 
-**Decisions.** (filled in when the phase is done)
+**Decisions.**
+- The server test `test_fake_workers_run_from_the_api_image` dropped its `video-worker` case (option (a), user-approved); the video-worker compose checks live in `video/tests/test_video_worker_compose.py` (parses `../compose.yaml` with pyyaml, already in the lock via `uvicorn[standard]`).
+- `cpus: ${MAI_VIDEO_CPUS:-4}` on the service (root `.env.example`); tuned in Phase 7. Image runs as uid 1000.
+- apt libraries: `ffmpeg libegl1 libgl1 libgles2 libglib2.0-0`. mediapipe 1.1.1 fails to load without `libEGL.so.1` (libegl1) and then `libGLESv2.so.2` (libgles2) even on CPU; both are required, verified by removing libgles2 and watching the image fail to become ready.
+- Only `devtools/fetch_models.py` is copied into the image (benchmark and future debug tools stay out). Models are fetched after `app/` is copied, so an app change re-downloads them (~17 MB); kept for a simpler Dockerfile.
+- Healthcheck start period 60 s in both the Dockerfile and compose.
+- Verified with `docker compose up --build` and the server smoke test (`READRIGHT_SMOKE_URL=https://localhost`): passed with the real video lane.
 
 ---
 

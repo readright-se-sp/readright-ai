@@ -11,7 +11,7 @@ MAI runs on one NVIDIA GPU server in AWS Sydney, started for presentation, testi
 | Compute | One EC2 g5.2xlarge (1x A10G 24 GB, 8 vCPU, 32 GB RAM) in ap-southeast-2, on-demand, started and stopped by session |
 | Server | FastAPI on uvicorn with async I/O, behind Caddy (TLS) on an Elastic IP |
 | Audio | CrisperWhisper 2.0 in its own worker container: start with `large`, benchmark `turbo` and `medium`, fp16, batched |
-| Video | Placeholder worker container; models not chosen yet; shares the GPU with audio |
+| Video | Worker container running MediaPipe face and hand landmarkers on CPU (limit `MAI_VIDEO_CPUS`, default 4); models baked into the image at build time |
 | Concurrency | 5-10 students at once; async server, per-worker queues, 429 when a request cannot finish inside 120 s |
 | State | Redis on the same machine for `request_id` idempotency |
 | Licensing | Non-commercial pilot, so CrisperWhisper's non-commercial terms are acceptable; revisit if that changes |
@@ -43,7 +43,7 @@ flowchart LR
     Caddy["Caddy<br/>TLS proxy"] --> API["API server<br/>FastAPI, async<br/>POST /v1/analyses"]
     API <--> Redis["Redis<br/>request_id state"]
     subgraph GPU["Shared GPU, A10G 24 GB"]
-      Video["Video worker<br/>models to be chosen<br/>(placeholder)"]
+      Video["Video worker<br/>MediaPipe landmarkers<br/>(CPU)"]
       Audio["Audio worker<br/>CrisperWhisper 2.0<br/>batched queue"]
     end
     API -->|webm| Video
@@ -127,7 +127,7 @@ Decisions behind these choices:
 
 ## Audio and video paths
 
-The audio path is settled except for the model size and backend; the video path has a slot reserved but no models yet.
+The audio path is settled except for the model size and backend; the video path runs MediaPipe landmarkers on CPU.
 
 ### Audio path (CrisperWhisper)
 
@@ -138,7 +138,9 @@ The audio path is settled except for the model size and backend; the video path 
 - **Interface.** The worker exposes an internal HTTP endpoint on the Docker network and holds the batching queue described above. The exact interface is in [`contracts/worker-api.md`](../contracts/worker-api.md).
 - **License.** The original CrisperWhisper weights are CC BY-NC 4.0, which suits a non-commercial pilot. The license of the 2.0 weights was not confirmed, so read the model card before relying on it.
 
-### Video path (placeholder)
+### Video path (MediaPipe on CPU)
+
+The video worker runs the MediaPipe face and hand landmarkers on CPU, limited by `MAI_VIDEO_CPUS` (default 4 of the instance's 8 vCPUs). The model files are downloaded and hash-checked at image build time (`models.lock`), so the container needs no network at start. The flags are still `false/false` until the decision phases land.
 
 The worker is a separate container with the same internal interface as the audio worker (job in, result out, deadline attached), so any model can be swapped in without touching the server. Choose the models against these criteria:
 

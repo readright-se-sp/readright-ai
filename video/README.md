@@ -5,7 +5,7 @@ The video lane of the MAI. It receives a job from the server (a recording on the
 - `is_finger_pointing`: whether the child points at the text with a finger while reading. How it works: filled in by Phases 5-6.
 - `is_lack_expression`: whether the child's face stays expressionless while reading. How it works: filled in by Phases 5-6.
 
-Current state (Phase 3): the full worker contract is implemented. Jobs are decoded to RGB frames (`app/frames.py`) and run through the MediaPipe face, hand and (optional) pose landmarkers (`app/landmarks.py`), but `decide()` (`app/decision.py`) still answers `false` for both flags until Phases 5-6.
+Current state (Phase 4): the full worker contract is implemented and the lane runs in Docker (`video/Dockerfile`, used by `compose.yaml`). Jobs are decoded to RGB frames (`app/frames.py`) and run through the MediaPipe face, hand and (optional) pose landmarkers (`app/landmarks.py`), but `decide()` (`app/decision.py`) still answers `false` for both flags until Phases 5-6.
 
 ## Prerequisites
 
@@ -33,6 +33,14 @@ uv run uvicorn app.main:create_app --factory --port 8002
 ```
 
 To run the server against it, set `MAI_VIDEO_WORKER_URL=http://localhost:8002` on the server. The scratch directory must be shared between the server and the lane.
+
+## Run with Docker
+
+```
+docker build -t readright-mai-video video/
+```
+
+The image bakes the models into `/models` at build time, runs as uid 1000 and listens on port 8002 with `MAI_VIDEO_ALLOWED_MEDIA_DIR=/scratch`. In the stack, run `docker compose up --build` from the repo root; the compose service mounts the shared `scratch` volume read-only and limits the lane to `MAI_VIDEO_CPUS` CPUs (default 4).
 
 ## API
 

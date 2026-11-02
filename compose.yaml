@@ -65,10 +65,10 @@ services:
       retries: 6
 
   video-worker:
-    build: ./server
-    image: readright-mai-server
+    build: ./video
+    image: readright-mai-video
     restart: unless-stopped
-    command: uvicorn devtools.fake_workers:video_app --host 0.0.0.0 --port 8002
+    cpus: ${MAI_VIDEO_CPUS:-4}
     volumes:
       - scratch:/scratch:ro
     healthcheck:
@@ -76,6 +76,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+      start_period: 60s
 
 volumes:
   scratch:
