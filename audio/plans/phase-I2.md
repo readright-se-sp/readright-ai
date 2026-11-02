@@ -184,3 +184,43 @@ Fast suite. No GPU and no models: a fake pipeline/transcriber is injected throug
 - **Q8. Docker on the dev machine.** The image is roughly 10–12 GB (CUDA, torch, about 3 GB of models). Recommend checking that Docker Desktop's WSL disk image is on D: before any build. If it isn't, move it in Docker Desktop's settings (Resources → Disk image location) or skip the local image build and verify on EC2.
 - **Q9. Bake the phoneme model while Lane B is off.** Recommend yes (about 1.2 GB), so turning Lane B on is an env change with no rebuild, as already promised to the team.
 - **Q10. Code review.** `worker/` is new code, but the mapping encodes Lane A's tag meanings. Recommend asking the Lane A developer to review `mapping.py` and the tag table in the I2 PR.
+
+## Results
+
+Measured 2026-11-03 on the dev machine (GTX 1660 Ti 6 GiB, driver 546.01, torch 2.8.0+cu126, ctranslate2 4.8.4). **Docker is not installed on this machine**, so the image was not built and `docker compose up` was not run. The Dockerfile, the compose changes and `compose.fake-audio.yaml` are unverified against a real Docker daemon: the deploying teammate verifies the image on EC2 (build, GPU visibility, time to ready, image size). What was run instead:
+
+- `devtools.fetch_models --model-dir D:/dev-cache/audio-models` for real (the build step of the image): 2 min 36 s including the downloads, the CTranslate2 float16 conversion and the `[verbatim_N]` check (passed). Sizes: ASR model 2.9 GB, phoneme model 1.2 GB, alignment model 361 MB (about 4.5 GB of models; the image will be larger by the CUDA runtime, torch and the venv).
+- The real worker with `uv run uvicorn audio.worker.app:create_app --factory`, loading those models with `HF_HUB_OFFLINE=1` and an empty `HF_HOME` (so nothing could be downloaded, as in the image), plus the server (in process, fakeredis, moto `mock_aws`), the server's fake video worker and the recording served over local HTTP as a webm. Lane B off (the default). The server's `POST /v1/analyses` returned 200 with miscues, phonemes and clips.
+
+| Measure | Result |
+|---|---|
+| Image size | not measured (no Docker); about 4.5 GB of models plus CUDA runtime, torch and venv, expected in the 10 to 12 GB range |
+| Time to ready | 26 to 31 s from process start (Python imports plus model load; CrisperWhisper, alignment, no phoneme model). The compose `start_period` is 180 s, which leaves room for a cold EC2 disk |
+| Request time (server `POST /v1/analyses`, 44 s recording, 3 miscues, 3 clips) | 19.3 s first request, 17.9 s and 17.6 s on later requests. This includes download, WAV conversion, ASR, Lane A, mapping, clip cut and upload to moto; the fake video worker answers at once |
+| Worker alone (`gpu` test, one `ring*` recording, 12 miscues) | 17.5 s wall time through `POST /v1/jobs` |
+| Peak VRAM | 4861 MiB whole device at peak (246 MiB in use before the worker started), so about 4.6 GB for the worker with Lane B off; 3727 MiB right after loading |
+
+A sample miscue from the server's response on that run:
+
+```json
+{"actual_phrase": "mongo", "spoken_phrase": "moa", "actual_phoneme": ["m", "ɔ", "ŋ", "ɡ", "oʊ"], "spoken_phoneme": ["m", "oʊ", "ə"], "read_start": 9373, "read_end": 9813, "audio_object_key": "analyses/<request_id>/miscues/miscue-0001.wav", "miscue_type": "substitution"}
+```
+
+With Lane B off, `actual_phoneme` and `spoken_phoneme` are espeak G2P of the phrases (Q4), so `spoken_phoneme` is the dictionary pronunciation of what ASR wrote.
+
+## Decisions made during implementation
+
+- Python 3.12 in the image, not 3.13: `pyproject.toml` has `requires-python = ">=3.11,<3.13"`, and `uv.lock` was resolved for it.
+- The no-speech check (step 7) is a transcriber wrapper (`_NoSpeechGuard` in `worker/app.py`) that raises `NoSpeech` when ASR returns zero words. `pipeline.py` is untouched, and `pipeline.run` still passes the WAV to Lane B. Splitting `run` into `transcribe` plus `analyze` in the worker would have switched Lane B off, because `analyze` has no audio.
+- Settings added beyond the plan's two: `WORKER_STATS_WINDOW` (20), `WORKER_DISCONNECT_POLL_S` (0.5) and `WORKER_LOG_LEVEL` (INFO).
+- `LaneError` and the status table live in `worker/schemas.py` (the plan has no `errors.py` for the worker), the JSON log helper in `worker/logging.py`.
+- Miscues are ordered by `start_ms`, ties by the index of the first row of each miscue (row order), which is passage order except for the heard half of a move.
+- `server/tests/test_compose_stack.py` asserted that `audio-worker` runs the fake worker; it now asserts the audio image. `compose.fake-audio.yaml` is covered by `audio/tests/worker/test_compose.py`.
+- A repetition row has no passage index in Lane A, so its `actual_phrase` is `""` (same as an insertion). Left as the plan's rule gives it; see Open.
+- Pyright is run on `src/` and `devtools/fetch_models.py` only. In test files strict mode flags `TestClient` as unknown.
+
+## Open
+
+- Image build and GPU visibility in Docker: to be verified on EC2.
+- Repetition miscues have an empty `actual_phrase`. If the BE wants the repeated word there, it is one line in `mapping.py` plus a decision from the Lane A developer.
+- Lane A's ruff errors (206 in `alignment/`, `tagging/`, `pipeline.py`, `models.py`, `wiring.py`, `transcription/` and two test files) and 20 unformatted files are not touched by this phase. `ruff check .` and `ruff format --check .` pass on everything I added or changed.
