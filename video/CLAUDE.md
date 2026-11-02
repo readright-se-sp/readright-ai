@@ -28,7 +28,8 @@ Package `app/` at the top level (no `src/` layout, same as `server/`).
 - `frames.py`: `probe`, `plan_sampling`, `iter_frames` (ffprobe/ffmpeg to RGB frames).
 - `landmarks.py`: `models.lock` reading/hashing, `ModelBundle`, `LandmarkerSession`, result mapping to `FrameFeatures`.
 - `expression.py`: `assess_expression()` decides lack of expression from face blendshape groups.
-- `decision.py`: `decide()` turns the feature series into flags and stats (expression decided; finger pointing false until Phase 6).
+- `pointing.py`: `assess_pointing()` decides finger pointing from hand shape, optional pose and fingertip sweeps.
+- `decision.py`: `decide()` turns the feature series into flags and stats (expression and finger pointing decided).
 - `jobs.py`: `JobRunner` (concurrency limit, queue, disconnect polling, stats).
 - `logging.py`: JSON logs, `job_id_var`.
 - `Dockerfile`, `.dockerignore`: the lane image (models baked in at build time via `devtools.fetch_models`; only `fetch_models` is copied into it).
