@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from video_helpers import FakeAnalyzer, make_client, valid_body
+from video_helpers import FakeAnalyzer, valid_body
 
 SECRET_ID = "SECRET-JOB-ID-xyz"
 SECRET_PATH = "/secret/dir/SECRET-PATH.webm"
@@ -26,18 +26,6 @@ def test_returns_false_flags_for_valid_job(client: TestClient, webm_file, analyz
         "is_lack_expression": False,
     }
     assert len(analyzer.calls) == 1
-
-
-def test_default_analyzer_answers_false_for_both_flags(webm_file, settings):
-    """Criterion 1."""
-    with make_client(settings) as client:
-        response = client.post("/v1/jobs", json=valid_body(webm_file))
-    assert response.status_code == 200
-    assert response.json() == {
-        "job_id": "job-1",
-        "is_finger_pointing": False,
-        "is_lack_expression": False,
-    }
 
 
 def test_echoes_job_id_exactly_with_case(client: TestClient, webm_file):

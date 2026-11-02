@@ -24,10 +24,13 @@ Package `app/` at the top level (no `src/` layout, same as `server/`).
 - `config.py`: `Settings` (`MAI_VIDEO_*` env vars, `.env`).
 - `models.py`: job/result/error models and `ErrorCode`.
 - `errors.py`: `LaneError`, `STATUS_BY_CODE`, error handlers.
-- `analyzer.py`: `Analyzer` protocol, `JobContext`, `JobCancelled`, `PlaceholderAnalyzer`.
+- `analyzer.py`: `Analyzer` protocol, `JobContext`, `JobCancelled`, `MediaPipeAnalyzer`.
 - `frames.py`: `probe`, `plan_sampling`, `iter_frames` (ffprobe/ffmpeg to RGB frames).
+- `landmarks.py`: `models.lock` reading/hashing, `ModelBundle`, `LandmarkerSession`, result mapping to `FrameFeatures`.
+- `decision.py`: `decide()` turns the feature series into flags and stats (false/false until Phases 5-6).
 - `jobs.py`: `JobRunner` (concurrency limit, queue, disconnect polling, stats).
 - `logging.py`: JSON logs, `job_id_var`.
+- `devtools/`: `fetch_models` (download models) and `benchmark_frames` (timing). Not part of the app.
 
 ## Conventions
 

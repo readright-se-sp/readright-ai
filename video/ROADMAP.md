@@ -8,7 +8,7 @@ The video lane is built in 7 phases. Each phase below says what to build, the in
 |---|---|---|
 | 1 | Project setup and worker contract layer | Done |
 | 2 | Frame decoding (ffprobe + ffmpeg) | Done |
-| 3 | MediaPipe landmarks and models | Not started |
+| 3 | MediaPipe landmarks and models | Done |
 | 4 | Packaging and compose | Not started |
 | 5 | Lack of expression | Not started |
 | 6 | Finger pointing | Not started |
@@ -257,7 +257,13 @@ class JobRunner:
 
 **Done when.** The criteria pass; `benchmark_frames.py` numbers (ms/frame per model, threads vs processes, on the developer machine) are recorded in Decisions.
 
-**Decisions.** (filled in when the phase is done)
+**Decisions.**
+- `mediapipe==1.1.1` (1.2.0 was under 2 weeks old). Tasks import path in 1.x: `from mediapipe.tasks.python import vision` (`mp.tasks.vision` also works); `mp.Image`/`mp.ImageFormat.SRGB` at the top level. It pulls in `opencv-contrib-python` (needs GL libraries in Docker, Phase 4).
+- Models: float16 version-1 URLs in `models.lock` (identical to `latest` at the time). `models.lock` is read from the project root next to `app/`; the hashes are re-checked on every `load()`.
+- `PlaceholderAnalyzer` deleted (nothing used it); the test that relied on the default analyzer answering `false/false` was removed, since `create_app()` now defaults to `MediaPipeAnalyzer`.
+- `MediaPipeAnalyzer` takes an optional `session_factory` (test seam); `ModelBundle.validate()` builds one session with `num_hands=1`.
+- Handedness is stored as MediaPipe reports it (MediaPipe assumes a mirrored image); Phase 6 must account for that.
+- Benchmark (developer machine, 12 logical CPUs, Windows, 20 s 1280x720 `testsrc` clip at 640 px / 5 fps = 100 frames; no face or hands in it, so the numbers understate the load from real recordings): face 1.8 ms/frame, hands 10.8 ms/frame, pose 23.7 ms/frame, job 2.0 s (6.4 s with pose). 2 jobs: threads 4.3 s vs processes 7.3 s wall; 4 jobs: threads 4.4 s vs processes 6.9 s. Threads scale (MediaPipe releases the GIL), so `asyncio.to_thread` stays and `jobs.py` is unchanged. Rerun on a real clip in Phase 7.
 
 ---
 

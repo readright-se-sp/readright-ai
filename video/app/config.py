@@ -18,3 +18,6 @@ class Settings(BaseSettings):
     sample_fps: float = Field(default=5.0, gt=0)
     frame_width: int = Field(default=640, ge=64)
     max_frames: int = Field(default=900, ge=1)
+    model_dir: Path = Path("models")
+    num_hands: int = Field(default=2, ge=1, le=4)
+    use_pose: bool = False
