@@ -10,7 +10,9 @@ Every number is also given without the rows whose notes say `unsure`.
 
 Selection rule (fixed in the plan, on the SELECTION recordings only):
   1. fewest FP + FN;  2. fewer FN;  3. higher exact-tag agreement;  4. closest to the defaults.
-The held-out recordings are only reported.
+The held-out recordings are only reported. The shipped config is the user's pick after the
+plan change of 2026-11-03 (the rule picks T_FLAG 0.30 with the unsure rows, 0.25 without);
+it is the SHIPPED dict below and is reported next to the rule's pick.
 
     uv run python devtools/score_labels.py      # writes devtools/out/b6b_sweep.csv and .md
 """
@@ -46,6 +48,10 @@ REFERENCE: dict[str, Any] = {
     "T_OVERRULE": 0.45,
     "COVERAGE_GUARD_RATIO": 1.0,
 }
+
+
+# What config.py ships (user decision, plans/phase-B6b.md "Plan change").
+SHIPPED: dict[str, Any] = {**REFERENCE, "T_FLAG_INCLUSIVE": False}
 
 
 @dataclass
@@ -258,13 +264,23 @@ def main() -> None:
     lines.append(f"Configs: {len(rows)}. Rows scored: {sum(len(c.lane_a_rows) for c in caches)}.")
     lines += ["", "## Lane A alone", ""]
     for split in SPLITS:
-        lines.append(f"- {split}: {fmt(lane_a, split)} | without unsure: {fmt(lane_a, split, True)}")
+        lines.append(f"- {split}: {fmt(lane_a, split)}; without unsure: {fmt(lane_a, split, True)}")
     lines += ["", f"## Chosen: `{chosen['name']}`", ""]
     for split in SPLITS:
-        lines.append(
-            f"- {split}: {fmt(chosen_total, split)} | without unsure: {fmt(chosen_total, split, True)}"
-        )
+        both = f"{fmt(chosen_total, split)}; without unsure: {fmt(chosen_total, split, True)}"
+        lines.append(f"- {split}: {both}")
     lines.append(f"- the same rule without the unsure rows picks: `{chosen_nu['name']}`")
+    shipped = next(r for r in rows if all(r[k] == v for k, v in SHIPPED.items()))
+    shipped_total, shipped_rec = score_config(replayer, caches, labels, dict(SHIPPED))
+    lines += ["", f"## Shipped: `{shipped['name']}`", ""]
+    for split in SPLITS:
+        both = f"{fmt(shipped_total, split)}; without unsure: {fmt(shipped_total, split, True)}"
+        lines.append(f"- {split}: {both}")
+    for c in caches:
+        lines.append(
+            f"- {c.recording[:10]}: Lane A {lane_a_rec[c.recording][0]}, shipped "
+            f"{shipped_rec[c.recording][0]}, labelled {shipped_rec[c.recording][1]}"
+        )
     lines += [
         "",
         f"Robustness: {len(beat_held)} of {len(rows)} configs beat Lane A alone on held-out "
