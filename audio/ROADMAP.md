@@ -26,6 +26,7 @@ This file covers Lane B and the interim shared pieces. Lane A adds its own phase
 | B6b | Thresholds, accent weights, near-equal vowels (needs teacher labels) | Done: [plans/phase-B6b.md](plans/phase-B6b.md). Lane B is on by default |
 | B6 | Calibration on real recordings | Split into B6a and B6b (section below is the original B6 outline) |
 | I2 | Audio worker HTTP API and image | Done on `feature/audio-worker` (PR to `feature/lane-b-integration` or `dev` when the user says so; Docker image to be verified on EC2): [plans/phase-I2.md](plans/phase-I2.md) |
+| F1 | The four audio flags (word by word, disregard punctuation, monotonous, hardly audible) | Done on `feature/audio-flags` (PR after the audio-worker PR merges). Definitions await team sign-off; results against the labels in the plan: [plans/phase-F1.md](plans/phase-F1.md) |
 | B7 | Worker API, scoring and contract mapping (interim) | Superseded by Lane A + I1 + I2 |
 
 ## How to work a phase
