@@ -23,7 +23,7 @@ This file covers Lane B and the interim shared pieces. Lane A adds its own phase
 | B5 | Arbitration | Done: [plans/phase-B5.md](plans/phase-B5.md) |
 | I1 | Integrate Lane B into Lane A on `dev` | Done on `feature/lane-b-integration` (PR to `dev` when the user says so): [plans/phase-I1.md](plans/phase-I1.md) |
 | B6a | Join window, coverage guard and short-word rule on real ASR timings (no labels) | Done on `feature/lane-b-integration`: [plans/phase-B6a.md](plans/phase-B6a.md) |
-| B6b | Thresholds, accent weights, near-equal vowels (needs teacher labels) | Next; Lane B stays off by default until it beats Lane A against labels |
+| B6b | Thresholds, accent weights, near-equal vowels (needs teacher labels) | Done on `feature/b6b`: [plans/phase-B6b.md](plans/phase-B6b.md). Lane B is on by default |
 | B6 | Calibration on real recordings | Split into B6a and B6b (section below is the original B6 outline) |
 | I2 | Audio worker HTTP API and image | Done on `feature/audio-worker` (PR to `feature/lane-b-integration` or `dev` when the user says so; Docker image to be verified on EC2): [plans/phase-I2.md](plans/phase-I2.md) |
 | B7 | Worker API, scoring and contract mapping (interim) | Superseded by Lane A + I1 + I2 |
