@@ -1,6 +1,6 @@
 # Phase B6b: Calibrate Lane B against hand labels
 
-Status: approved 2026-11-03. All open questions resolved: the recommendation stands for each (Q3: two/"to" is relabelled match).
+Status: done 2026-11-03. All open questions resolved: the recommendation stands for each (Q3: two/"to" is relabelled match).
 
 ## Why
 
@@ -120,3 +120,46 @@ With the unsure rows the rule picked T_FLAG 0.30; without them, T_FLAG 0.25 (bot
 - A repair-only Lane B should not clear real errors.
 - jacky/"jack" sits at exactly 0.25 and is labelled a mispronunciation.
 Record both configs' numbers in Results.
+
+## Results (2026-11-03)
+
+Status: **done.** The sweep ran from the cache (`devtools/score_labels.py`, 72 configs, no models). Labels: `tests/fixtures/labels_b6b.csv`, 735 rows, 47 true counted errors after the Q3 relabel (two/"to", `mamawas…` row 42, from mispronunciation to match: "two" and "to" sound the same), 8 rows marked `unsure`. The first sanity check reproduced the planning numbers, shifted by exactly that one row.
+
+**Sanity check (current defaults before the sweep, TP / FP / FN, exact tag):** Lane A alone 44 / 21 / 3, 705 of 735. Lane A + Lane B 42 / 19 / 5, 709 of 735.
+
+**Shipped config:** `OVERRULE_MATCH` false, `T_FLAG` 0.25 with `<` (`T_FLAG_INCLUSIVE` false), `T_OVERRULE` 0.45 (no effect while `OVERRULE_MATCH` is false), `COVERAGE_GUARD_RATIO` 1.0 (no effect either); join, short-word and adaptive settings stay at the B6a values. The rule picked `T_FLAG` 0.30 with the unsure rows and 0.25 without them (see the plan change above); the user chose 0.25.
+
+TP / FP / FN, exact tag (rows in brackets exclude the 8 unsure rows):
+
+| | Selection (488 rows) | Held-out (247 rows) |
+|---|---|---|
+| Lane A alone | 30 / 17 / 2, exact 464 (28 / 11 / 2, 464 of 480) | 14 / 4 / 1, exact 241 (same) |
+| **Shipped** (`T_FLAG` 0.25 `<`) | 29 / 10 / 3, exact 472 (28 / 6 / 2, 470 of 480) | 13 / 1 / 2, exact 244 (same) |
+| Rule's pick with unsure rows (`T_FLAG` 0.30 `<`) | 27 / 7 / 5, exact 475 (26 / 4 / 4, 472 of 480) | 12 / 0 / 3, exact 244 (same) |
+
+FP + FN: Lane A alone 19 (selection) and 5 (held-out); shipped 13 and 3. Without the unsure rows, the shipped config and the `T_FLAG` 0.30 config tie on FP + FN (11 each across both splits, 8 + 3).
+
+**Robustness:** 46 of 72 configs beat Lane A alone on held-out FP + FN, and 40 of 72 beat it on both splits.
+
+**Counted errors per recording (Lane A alone, shipped, labelled):** a_mouse 4, 2, 2; every_saturday 15, 12, 9; 3, 3, 4; 4, 4, 2; mama_was 9, 7, 4; marian_came 5, 4, 5; 3, 3, 3; nick_is_a_tri 10, 7, 7; ring_ring 12, 11, 11.
+
+**What the sweep showed**
+- `OVERRULE_MATCH` false wins: selection FP + FN is 12 to 14 across the `false` configs and 16 to 28 across the `true` ones; held-out is 2 to 4 against 2 to 13. Turning a heard-correct word into an error was wrong 9 times out of 10 (Q2 confirmed). Lane B is a repair step.
+- `T_FLAG` 0.15 to 0.20 has the fewest misses (selection FN 2) but clears fewer false errors; 0.30 clears the most false errors but misses 3 more real ones across both splits. 0.25 sits between.
+- The `<` vs `<=` choice matters at exactly 0.25: jacky/"jack" (a real error) and one kris/"chris" (not an error) both score exactly 0.25. With `<`, jacky stays an error (it is tagged substitution, the label says mispronunciation, both counted) and the one kris row stays a false error.
+
+**Switch-on decision (Q5): passed, Lane B is on by default.** The shipped config beats Lane A alone on FP + FN on both splits (13 vs 19, 3 vs 5) and does not lose on exact-tag agreement (472 vs 464, 244 vs 241). `AUDIO_PHONETIC_ENABLED` now defaults to true in `config.py` and in `compose.yaml` (`feature/audio-worker`). Tell the deploying teammate before merging.
+
+**Live run** (`devtools/run_pipeline.py`, real CrisperWhisper 2.0 and xlsr-53, all 9 recordings, GTX 1660 Ti): **0 differing final tags and 0 differing Lane A tags against replay, 735 rows.** Label changes, Lane A to final: substitution to match 5, mispronunciation to substitution 6, mispronunciation to match 7, substitution to mispronunciation 4 (no match is overruled any more). Request time 15.6 to 36.6 s, recogniser 0.7 to 2.6 s, peak GPU 6144 MB (the card's limit), models loaded in about 11 s.
+
+**Hand-checked rows** (`tests/fixtures/handchecked_i1.yaml`, updated to the labels): cups/"cops" and mongo/"mango" are match and pass. 12 of 14 rows pass. Two stay `xfail` with plain reasons: jacky/"jack" ends as substitution where the label says mispronunciation (both are counted), and one kris/"chris" row sits exactly at `T_FLAG` and is not cleared.
+
+**Limits (Q7).** 47 true errors from one labeller who saw both lanes' guesses (pre-filled when they agreed), and a one-row difference decides between neighbouring configs. The numbers support "Lane B helps as a repair step", not a precise accuracy claim. Known limit that no threshold fixes: the recogniser misses a weak word-initial /h/ ("juanings" said "huanings").
+
+## Lane A findings
+
+For the Lane A developer. Measured against 735 hand-labelled words in 9 real recordings. Lane A on its own counts 65 errors where the labels have 47; about half of the extra ones are fixed by Lane B, but these causes are on the ASR side:
+
+1. **Filipino words go missing or come out as English.** In one recording "taho, taho" was read twice and the ASR returned no words for either, so both were counted as omissions. Later in the same recording "taho" came back as "tofu". Passing the passage words to CrisperWhisper as an initial prompt or hotwords might help; that is your call.
+2. **Spelling variants of names and short words are counted as errors.** "Kris" came back as "chris" 3 times, "mang" as "mon" or "mom", "cheese" as "geez", "tinoys" as "tenoys", "juanings" as "huanings" and "mongo" as "mango". The child read each of these correctly. Letting `sound_key` cover these spellings may stop them being counted.
+3. **A word that was not said is in the transcript.** In one recording the word "not" was labelled an omission but is in the ASR text, which looks like the model filling in from context.

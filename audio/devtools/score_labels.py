@@ -20,6 +20,7 @@ it is the SHIPPED dict below and is reported next to the rule's pick.
 import csv
 import itertools
 import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -94,7 +95,7 @@ def exact(tag: str, label: str) -> bool:
 
 
 def score_run(
-    c: Cached, words: list[dict[str, Any]], labels: dict[tuple[str, int], Label]
+    c: Cached, words: Sequence[Mapping[str, Any]], labels: dict[tuple[str, int], Label]
 ) -> dict[tuple[str, bool], Counts]:
     """Counts for one recording, keyed by (split, without_unsure)."""
     out: dict[tuple[str, bool], Counts] = {}
