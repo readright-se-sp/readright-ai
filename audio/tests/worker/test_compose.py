@@ -25,7 +25,7 @@ def test_audio_worker_is_the_real_image_with_a_gpu() -> None:
     device = svc["deploy"]["resources"]["reservations"]["devices"][0]
     assert device["driver"] == "nvidia"
     assert "gpu" in device["capabilities"]
-    assert svc["environment"]["AUDIO_PHONETIC_ENABLED"] == "${AUDIO_PHONETIC_ENABLED:-false}"
+    assert svc["environment"]["AUDIO_PHONETIC_ENABLED"] == "${AUDIO_PHONETIC_ENABLED:-true}"
     assert svc["healthcheck"]["start_period"] == "180s"
     assert "/scratch:ro" in svc["volumes"][0]
 

@@ -33,7 +33,9 @@ TABLE = {
 }
 
 # Tuning values pinned here so these tests stay about behaviour, not about the B6a defaults.
-TEST_SETTINGS = AudioSettings(_env_file=None, COVERAGE_GUARD_RATIO=0.5, SHORT_WORD_MAX_PHONES=0)
+TEST_SETTINGS = AudioSettings(
+    _env_file=None, COVERAGE_GUARD_RATIO=0.5, SHORT_WORD_MAX_PHONES=0, OVERRULE_MATCH=True
+)
 
 
 class FakeRecogniser:
@@ -331,8 +333,23 @@ def test_default_settings_never_overrule_a_short_word():
         rec,
         PassagePreparer(FakeG2P(TABLE)),
         PassagePreparer(FakeG2P(TABLE), cache_size=0),
-        AudioSettings(_env_file=None),
+        AudioSettings(_env_file=None, OVERRULE_MATCH=True),
     )
     (out,) = rev.review("a.wav", rows, ctx("fish"))
     assert out["tag"] == "match"
     assert (out["phonetic"]["check"], out["phonetic"]["reason"]) == ("unverifiable", "short_word")
+
+
+def test_default_settings_keep_a_match_and_say_so():
+    # B6b defaults: OVERRULE_MATCH is off, so Lane B never turns a match into an error
+    rows = [row("match", "fish", "fish", 0.0, 0.5, [0])]
+    rev = PhoneticReviewer(
+        FakeRecogniser(heard(("g", "ɛ", "z"), 0), None),
+        PassagePreparer(FakeG2P(TABLE)),
+        PassagePreparer(FakeG2P(TABLE), cache_size=0),
+        AudioSettings(_env_file=None),
+    )
+    (out,) = rev.review("a.wav", rows, ctx("fish"))
+    assert out["tag"] == "match"
+    assert (out["phonetic"]["check"], out["phonetic"]["reason"]) == ("unverifiable", "match_kept")
+    assert out["phonetic"]["d_exp"] is not None
