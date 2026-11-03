@@ -133,3 +133,73 @@ Each flag is a yes/no for the whole reading, like the teacher's checklist. When 
 - **Q5. Automatic gain control in the FE.** Ask the FE developer whether `getUserMedia` uses `autoGainControl` (on by default in browsers). Recommend keeping both conditions (level or SNR) either way. If gain control is on, the SNR condition does most of the work.
 - **Q6. Flags in `AudioResult`?** Recommend no: compute them in the worker so Lane A's files and `audio-service.md` don't change. If the Lane A developer wants them in the pipeline result later, that's a contract change (v8).
 - **Q7. Labels and sample size.** Recommend the user marks yes/no per flag per recording (36 judgements) before the threshold check. With 9 recordings, which are probably mostly fluent and audible, this catches clearly wrong definitions but can't fine-tune thresholds. Say so in the README and the PR, and collect more recordings for a later check.
+
+## Results
+
+Run 2026-11-03 at the defaults above, on the 9 cached recordings (Lane A + Lane B, as the worker runs), with `devtools/flag_report.py`. Labels are the user's yes/no in `tests/fixtures/flags_labels.csv`; "unsure" is the user's note. The same flags and metrics came out of the live worker (below), so replay and worker agree.
+
+### Per recording: flag (label); a star marks a disagreement
+
+| recording | word_by_word | disregard_punctuation | monotonous | hardly_audible | note |
+|---|---|---|---|---|---|
+| amouseanda0d17 | no (yes) * | no (no) | no (no) | no (no) | |
+| everysatur88f3 | no (no) | no (yes) * | yes (yes) | no (no) | |
+| everysatur9994 | no (no) | no (yes) * | yes (yes) | no (no) | unsure |
+| everysaturbc0e | no (no) | no (no) | no (yes) * | no (no) | |
+| mamawasfeef5f | no (yes) * | no (yes) * | yes (yes) | no (no) | |
+| mariancame60bc | no (no) | no (no) | no (no) | no (no) | |
+| mariancamea8fe | no (no) | no (yes) * | no (no) | no (no) | unsure |
+| nickisatrifc65 | no (yes) * | no (no) | no (no) | no (no) | |
+| ringringraf85a | no (no) | yes (no) * | no (no) | no (no) | |
+
+9 disagreements of 36: word_by_word 3 (all missed), disregard_punctuation 5 (4 missed, 1 false yes), monotonous 1 (missed), hardly_audible 0.
+
+### Per recording: metrics
+
+| recording | wbw gaps | share of gaps >= 250 ms | median gap ms | sentence ends | honoured share | comma honoured share | pitch SD (st) | voiced words | speech dBFS | noise dBFS | SNR dB |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| amouseanda0d17 | 66 | 0.29 | 140 | 9 | 0.78 | 0.50 (4) | 2.73 | 77 | -23.9 | -74.6 | 50.7 |
+| everysatur88f3 | 54 | 0.09 | 60 | 7 | 1.00 | 0.12 (8) | 1.34 | 78 | -21.5 | -120 | 98.5 |
+| everysatur9994 | 61 | 0.13 | 80 | 7 | 0.86 | 0.30 (10) | 1.83 | 78 | -20.0 | -51.2 | 31.1 |
+| everysaturbc0e | 61 | 0.05 | 60 | 7 | 0.71 | 0.40 (10) | 2.32 | 80 | -21.1 | -54.6 | 33.5 |
+| mamawasfeef5f | 46 | 0.24 | 100 | 10 | 0.70 | 0.71 (7) | 1.92 | 67 | -22.5 | -62.3 | 39.8 |
+| mariancame60bc | 63 | 0.06 | 80 | 10 | 0.90 | 0.25 (4) | 2.64 | 80 | -19.1 | -68.8 | 49.6 |
+| mariancamea8fe | 63 | 0.17 | 80 | 10 | 0.60 | 0.75 (4) | 3.20 | 76 | -23.8 | -48.1 | 24.3 |
+| nickisatrifc65 | 54 | 0.17 | 100 | 11 | 0.91 | 0.86 (7) | 2.37 | 78 | -22.3 | -70.2 | 47.8 |
+| ringringraf85a | 43 | 0.00 | 60 | 11 | 0.45 | 0.75 (4) | 4.63 | 69 | -10.3 | -120 | 109.7 |
+
+(`-120` is digital silence in the gaps: the floor of the scale.) Full-precision numbers: `devtools/out/flags.md` after `uv run python devtools/flag_report.py`.
+
+### Threshold check
+
+No default changed. Each setting was swept over a range on the 9 recordings (a throwaway script; the same can be done with `flag_report.py --set NAME=VALUE`):
+
+- **`is_hardly_audible`**: no disagreement, nothing to change.
+- **`is_monotonous`** (one missed: `everysaturbc0e`, SD 2.32; the nearest "no" label is `nickisatrifc65`, SD 2.37). `MONO_MAX_ST` 2.35 would give 0 disagreements, but the margin is 0.05 semitones, which is smaller than the measurement noise, and 2.5 already breaks `nickisat`. Kept 2.0. A flat voice at 2.0 to 2.4 semitones is a judgement call; one more labelled recording would settle it.
+- **`is_word_by_word`** (3 missed, shares 0.29, 0.24 and 0.17 against 0.00 to 0.17 for the "no" recordings). Only two settings give 0 disagreements: `WBW_MIN_SHARE` 0.2 with `WBW_GAP_MS` 200, and `WBW_GAP_MS` 100 with `WBW_MIN_SHARE` 0.5. The first means "one gap in five is a pause", which is not "a pause after nearly every word"; the second counts 100 ms as a pause, but a fluent reader's median gap here is 60 to 80 ms and the timestamps are rounded to 20 ms. Neither is a sensible threshold for the definition, so kept 250 ms / 0.5. The labels suggest the person's idea of "word by word" is milder than the definition. This is a Q1 question for the team, not a number to tune.
+- **`is_disregard_punctuation`** (5 disagreements). No combination of `PUNCT_SENTENCE_PAUSE_MS` (200 to 400), `PUNCT_REL` (1.0 to 2.0) and `PUNCT_MIN_SHARE` (0.3 to 0.8) gives fewer than 4. Three recordings the person marked "disregards" (`everysatur88f3`, `everysatur9994`, `mamawas`) have 70 to 100% of their full stops followed by a pause of 300 ms or more, so the person was probably listening for something else (commas, the rise and fall of the voice at a stop, or the long pauses elsewhere). `PUNCT_MIN_SHARE` 0.4 would fix `ringringraf85a` (honoured share 0.45) and break nothing, but it leaves the other four wrong and only moves the one recording near the line, so it was not changed. The definition needs review with a teacher (Q1).
+
+### Quiet copies for `is_hardly_audible` (in memory; the original is audible)
+
+| copy | flag | speech dBFS | noise dBFS | SNR dB |
+|---|---|---|---|---|
+| mamawasfeef5f, -20 dB | yes | -42.5 | -82.3 | 39.8 |
+| mamawasfeef5f, -30 dB | yes | -52.5 | -92.3 | 39.8 |
+| mamawasfeef5f, -20 dB + original noise (-62.3 dBFS) | yes | -42.5 | -62.3 | 19.9 |
+| ringringraf85a, -20 dB | no | -30.3 | -120 | 89.7 |
+| ringringraf85a, -30 dB | yes | -40.3 | -120 | 79.7 |
+| ringringraf85a, -20 dB + original noise (-120 dBFS) | no | -30.3 | -120 | 89.7 |
+
+`ringringraf85a` is a very loud recording (-10 dBFS), so 20 dB down is still -30 dBFS, above the -35 threshold; it is flagged at 30 dB down. The "gain control" copies keep the SNR at 19.9 dB for `mamawas` and 89.7 dB for `ringring` (its original noise is digital silence), so both stay above the 10 dB limit and the SNR condition never fired on these copies. It is covered by the synthetic test (tone at -20 dBFS over -25 dBFS noise), but not yet by a real recording.
+
+### Live check (worker on the dev GPU, GTX 1660 Ti)
+
+`uv run uvicorn audio.worker.app:create_app --factory --port 8001`, ready in about 60 s including the first load. One `POST /v1/jobs` for `mamawasfeef5f` (44 s) returned 200 in 24.3 s (27.0 s the second time) with `is_word_by_word` false, `is_disregard_punctuation` false, `is_monotonous` true, `is_hardly_audible` false, the same as the replay. The flags took 85 ms and 78 ms (the `flags_ms` in the "flags computed" log), so they add about 0.1 s.
+
+### Decisions made while building
+
+- Rows without a passage index (a repetition) cannot be placed against the punctuation, so the pairs they form are skipped for both fluency flags. The plan listed `repetition` as a read tag; as a row it still counts for pitch and loudness.
+- Words about an octave from the median (more than 11 semitones, not strictly more than 12) are dropped from the pitch spread, because a real octave error measures about 12 and the plan's "an octave jump is dropped" test requires it.
+- `is_hardly_audible` needs at least one timed read word. Without a gap of 200 ms or more there is no noise estimate (`audible_reason=no_noise_estimate`) and the level alone decides.
+- The flag metrics are logged as `flag_metrics` in the "flags computed" line (numbers only, no text).
+
