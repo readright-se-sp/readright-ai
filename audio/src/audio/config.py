@@ -69,6 +69,24 @@ class AudioSettings(BaseSettings):
     WORKER_DISCONNECT_POLL_S: float = Field(default=0.5, gt=0)
     WORKER_LOG_LEVEL: str = "INFO"
 
+    # Audio flags (Phase F1): is_word_by_word, is_disregard_punctuation, is_monotonous,
+    # is_hardly_audible. All provisional until checked on real recordings (plans/phase-F1.md).
+    FLAGS_ENABLED: bool = True  # false: all four flags are false
+    WBW_GAP_MS: int = Field(default=250, ge=0)  # a within-phrase gap this long is a pause
+    WBW_MIN_SHARE: float = Field(default=0.5, ge=0, le=1)  # share of pauses that makes it choppy
+    PUNCT_SENTENCE_PAUSE_MS: int = Field(default=300, ge=0)
+    PUNCT_COMMA_PAUSE_MS: int = Field(default=150, ge=0)
+    PUNCT_REL: float = Field(default=1.5, ge=0)  # and this times the median within-phrase gap
+    PUNCT_MIN_SHARE: float = Field(default=0.5, ge=0, le=1)  # honoured share below this: flag
+    MONO_MAX_ST: float = Field(default=2.0, gt=0)  # pitch SD (semitones) below this: flat
+    PITCH_FLOOR_HZ: float = Field(default=75, gt=0)
+    PITCH_CEIL_HZ: float = Field(default=600, gt=0)
+    AUDIBLE_MIN_DBFS: float = -35  # speech level below this: hardly audible
+    AUDIBLE_MIN_SNR_DB: float = 10  # speech minus noise below this: hardly audible
+    FLAGS_MIN_GAPS: int = Field(default=10, ge=1)  # within-phrase gaps needed for word-by-word
+    FLAGS_MIN_BOUNDARIES: int = Field(default=3, ge=1)  # sentence ends needed for punctuation
+    FLAGS_MIN_WORDS: int = Field(default=15, ge=1)  # voiced words needed for monotony
+
     @model_validator(mode="after")
     def _check_thresholds(self) -> Self:
         if not 0 <= self.T_FLAG < self.T_OVERRULE:
