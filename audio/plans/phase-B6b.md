@@ -116,10 +116,9 @@ Write these up as a short section in Results that the user can forward to the La
 ## Plan change (2026-11-03): selection when the unsure rows change the pick
 
 With the unsure rows the rule picked T_FLAG 0.30; without them, T_FLAG 0.25 (both OVERRULE_MATCH=false, T_OVERRULE 0.45, guard 1.0). They tie on FP+FN without the unsure rows (11 each across both splits) and differ by 1 row with them. The user chose T_FLAG 0.25 with `<`:
-- When the two picks are within 1 row, prefer the config closer to the defaults and with fewer FN.
-- A repair-only Lane B should not clear real errors.
+- The picks are within one row of each other on every split (`T_FLAG` 0.15, 0.20 and 0.25 tie on selection FP + FN with 13; 0.15 and 0.20 trade one FN for one FP against 0.25), so the config closest to the existing default (0.25) was kept. Held-out numbers were not used to choose.
 - jacky/"jack" sits at exactly 0.25 and is labelled a mispronunciation.
-Record both configs' numbers in Results.
+Record the configs' numbers in Results.
 
 ## Results (2026-11-03)
 
@@ -135,6 +134,8 @@ TP / FP / FN, exact tag (rows in brackets exclude the 8 unsure rows):
 |---|---|---|
 | Lane A alone | 30 / 17 / 2, exact 464 (28 / 11 / 2, 464 of 480) | 14 / 4 / 1, exact 241 (same) |
 | **Shipped** (`T_FLAG` 0.25 `<`) | 29 / 10 / 3, exact 472 (28 / 6 / 2, 470 of 480) | 13 / 1 / 2, exact 244 (same) |
+| `T_FLAG` 0.15 `<` | 30 / 11 / 2, exact 472 (28 / 7 / 2, 469 of 480) | 14 / 1 / 1, exact 245 (same) |
+| `T_FLAG` 0.20 `<` | 30 / 11 / 2, exact 472 (28 / 7 / 2, 469 of 480) | 13 / 1 / 2, exact 244 (same) |
 | Rule's pick with unsure rows (`T_FLAG` 0.30 `<`) | 27 / 7 / 5, exact 475 (26 / 4 / 4, 472 of 480) | 12 / 0 / 3, exact 244 (same) |
 
 FP + FN: Lane A alone 19 (selection) and 5 (held-out); shipped 13 and 3. Without the unsure rows, the shipped config and the `T_FLAG` 0.30 config tie on FP + FN (11 each across both splits, 8 + 3).
