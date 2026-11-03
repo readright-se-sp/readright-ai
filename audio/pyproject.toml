@@ -19,6 +19,7 @@ dependencies = [
     "numpy",
     "fastapi",
     "uvicorn[standard]",
+    "praat-parselmouth==0.4.7",
 ]
 
 [project.optional-dependencies]
