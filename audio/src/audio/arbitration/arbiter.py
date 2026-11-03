@@ -125,7 +125,14 @@ def arbitrate(
                 else t_overrule
             )
             label = _label(
-                stage3, exp.distance, d_hyp, exp.deviations, heard, t_flag, eff_overrule, t_flag_inclusive
+                stage3,
+                exp.distance,
+                d_hyp,
+                exp.deviations,
+                heard,
+                t_flag,
+                eff_overrule,
+                t_flag_inclusive,
             )
             if stage3 == _L.CORRECT and label != stage3:
                 shortest = min(len(v) for v in expected)

@@ -20,7 +20,9 @@ TABLE = {
 TEXT = "the cat sat"
 
 # Tuning values pinned here so these tests stay about behaviour, not about the B6a defaults.
-TEST_SETTINGS = AudioSettings(_env_file=None, COVERAGE_GUARD_RATIO=0.5, SHORT_WORD_MAX_PHONES=0)
+TEST_SETTINGS = AudioSettings(
+    _env_file=None, COVERAGE_GUARD_RATIO=0.5, SHORT_WORD_MAX_PHONES=0, OVERRULE_MATCH=True
+)
 
 
 class FakeRecogniser:

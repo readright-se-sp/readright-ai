@@ -112,3 +112,11 @@ Write these up as a short section in Results that the user can forward to the La
 - **Q5. Switch Lane B on by default if the decision rule passes?** Recommend yes: `config.py` default true and the compose default true. On the A10G it adds about 20 s to startup, 1–2.5 s per request and about 1.5 GB of GPU memory, all within budget. Tell the deploying teammate before merging. Alternative: keep it off and let them set the env var.
 - **Q6. `unsure` rows (8).** Recommend keeping them in the main score and reporting the without-unsure numbers next to it. If the chosen config changes when they're excluded, stop and report.
 - **Q7. Small sample.** 48 true errors from one labeller, who saw both lanes' guesses (pre-filled when they agreed). Recommend stating this limit in Results and in the PR. The numbers support "Lane B helps as a repair step", not a precise accuracy claim.
+
+## Plan change (2026-11-03): selection when the unsure rows change the pick
+
+With the unsure rows the rule picked T_FLAG 0.30; without them, T_FLAG 0.25 (both OVERRULE_MATCH=false, T_OVERRULE 0.45, guard 1.0). They tie on FP+FN without the unsure rows (11 each across both splits) and differ by 1 row with them. The user chose T_FLAG 0.25 with `<`:
+- When the two picks are within 1 row, prefer the config closer to the defaults and with fewer FN.
+- A repair-only Lane B should not clear real errors.
+- jacky/"jack" sits at exactly 0.25 and is labelled a mispronunciation.
+Record both configs' numbers in Results.

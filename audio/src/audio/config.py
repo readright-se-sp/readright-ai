@@ -47,7 +47,8 @@ class AudioSettings(BaseSettings):
     COVERAGE_MAX_GAP_MS: int = 300  # silence that ends a coverage run
 
     # Arbitration (B5, B6a). The guard, short-word and adaptive values come from the B6a sweep;
-    # T_FLAG and T_OVERRULE are still starting values for B6b (needs labels).
+    # OVERRULE_MATCH, T_FLAG and T_FLAG_INCLUSIVE come from the B6b label sweep
+    # (plans/phase-B6b.md).
     COVERAGE_GUARD_RATIO: float = (
         1.0  # CORRECT is overruled only if >= this share of phonemes heard
     )
@@ -56,8 +57,9 @@ class AudioSettings(BaseSettings):
         True  # longer overrule threshold for short words with one extra phoneme
     )
     T_FLAG: float = 0.25
-    T_FLAG_INCLUSIVE: bool = True  # a distance equal to T_FLAG clears a row (<=); false: keeps it (<)
-    OVERRULE_MATCH: bool = True  # false: Lane B never changes a row Lane A tagged match
+    # true: a distance equal to T_FLAG clears a row (<=); false: it keeps the error (<)
+    T_FLAG_INCLUSIVE: bool = False
+    OVERRULE_MATCH: bool = False  # false: Lane B never changes a row Lane A tagged match
     T_OVERRULE: float = 0.45
 
     @model_validator(mode="after")
