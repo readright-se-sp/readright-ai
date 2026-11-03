@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from audio.config import AudioSettings
 from audio.errors import NoSpeech
+from audio.flags.fluency import FlagOutcome
 from audio.models import AudioResult, ReadingScore, new_row
 from audio.worker.app import Engine, create_app
 from tests.conftest import FakeG2P
@@ -128,6 +129,61 @@ def test_ok_echoes_job_id(client: TestClient, tmp_path: Path) -> None:
     assert out["reading_score"] == 83.3
     assert out["miscues"][0]["miscue_type"] == "substitution"
     assert (out["miscues"][0]["start_ms"], out["miscues"][0]["end_ms"]) == (500, 900)
+
+
+def flag_values(out: dict[str, Any]) -> tuple[bool, bool, bool, bool]:
+    return (
+        out["is_word_by_word"],
+        out["is_disregard_punctuation"],
+        out["is_monotonous"],
+        out["is_hardly_audible"],
+    )
+
+
+def test_flags_reach_the_response(
+    settings: AudioSettings,
+    pipeline: FakePipeline,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("audio.flags.word_by_word", lambda *_: FlagOutcome(True, {}))
+    monkeypatch.setattr("audio.flags.monotonous", lambda *_: FlagOutcome(True, {}))
+    with make_client(settings, pipeline) as c:
+        wait_ready(c)
+        out = c.post("/v1/jobs", json=job(write_wav(tmp_path / "a.wav"))).json()
+    assert flag_values(out) == (True, False, True, False)
+
+
+def test_flags_disabled_gives_all_false(
+    settings: AudioSettings,
+    pipeline: FakePipeline,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("audio.flags.word_by_word", lambda *_: FlagOutcome(True, {}))
+    off = settings.model_copy(update={"FLAGS_ENABLED": False})
+    with make_client(off, pipeline) as c:
+        wait_ready(c)
+        out = c.post("/v1/jobs", json=job(write_wav(tmp_path / "a.wav"))).json()
+    assert flag_values(out) == (False, False, False, False)
+
+
+def test_a_failing_flag_is_false_and_the_request_succeeds(
+    settings: AudioSettings,
+    pipeline: FakePipeline,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(*_: object) -> FlagOutcome:
+        raise RuntimeError("pitch tracker blew up")
+
+    monkeypatch.setattr("audio.flags.word_by_word", lambda *_: FlagOutcome(True, {}))
+    monkeypatch.setattr("audio.flags.hardly_audible", boom)
+    with make_client(settings, pipeline) as c:
+        wait_ready(c)
+        resp = c.post("/v1/jobs", json=job(write_wav(tmp_path / "a.wav")))
+    assert resp.status_code == 200, resp.text
+    assert flag_values(resp.json()) == (True, False, False, False)
 
 
 @pytest.mark.parametrize(

@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from audio.alignment.text import tokenize_passage
 from audio.config import AudioSettings
 from audio.errors import MediaUnreadable, NoSpeech
+from audio.flags import compute_flags
 from audio.models import AudioResult, SpokenWord
 from audio.phonetics.g2p import G2P, build_g2p
 from audio.recognition.audio_io import load_wav
@@ -169,10 +170,6 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.engine = None
         app.state.jobs = JobRunner(settings)
-        logger.warning(
-            "is_word_by_word, is_disregard_punctuation, is_monotonous and is_hardly_audible "
-            "are not implemented; they are always false"
-        )
         load_task = asyncio.create_task(load_engine(app))
         try:
             yield
@@ -205,7 +202,7 @@ def create_app(
                 raise LaneError(ErrorCode.DEADLINE_EXCEEDED, "Deadline exceeded.")
 
             def work() -> AudioWorkerResult:
-                load_wav(path)  # fail fast on a bad file, before ASR's ffmpeg decode
+                samples = load_wav(path)  # fail fast on a bad file, before ASR's ffmpeg decode
                 result = engine.pipeline.run(
                     str(path), job.passage_content, deadline_ms=job.deadline
                 )
@@ -213,7 +210,22 @@ def create_app(
                     error_count=result["score"]["error_count"],
                     phonetic_check=_phonetic_check_states(result),
                 )
-                mapped = to_worker_result(job.job_id, result, passage_tokens, engine.g2p)
+                flag_start = time.perf_counter()
+                flags = compute_flags(samples, result["words"], job.passage_content, settings)
+                logger.info(
+                    "flags computed",
+                    extra={
+                        "flags_ms": round((time.perf_counter() - flag_start) * 1000, 1),
+                        "flag_values": {
+                            "is_word_by_word": flags.word_by_word,
+                            "is_disregard_punctuation": flags.disregard_punctuation,
+                            "is_monotonous": flags.monotonous,
+                            "is_hardly_audible": flags.hardly_audible,
+                        },
+                        "flag_metrics": flags.metrics,
+                    },
+                )
+                mapped = to_worker_result(job.job_id, result, passage_tokens, engine.g2p, flags)
                 extra["miscue_count"] = len(mapped.miscues)
                 return mapped
 

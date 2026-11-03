@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from audio.alignment.text import normalize
+from audio.flags import AudioFlags
 from audio.models import AlignedWord, AudioResult, Tag
 from audio.phonetics.g2p import G2P, G2PError
 from audio.phonetics.ipa import normalise_segments
@@ -147,9 +148,17 @@ def _span(rows: Sequence[AlignedWord], members: list[int], tag: Tag) -> tuple[in
 
 
 def to_worker_result(
-    job_id: UUID, result: AudioResult, passage_tokens: Sequence[str], g2p: G2P
+    job_id: UUID,
+    result: AudioResult,
+    passage_tokens: Sequence[str],
+    g2p: G2P,
+    flags: AudioFlags | None = None,
 ) -> AudioWorkerResult:
-    """Maps one AudioResult. ``passage_tokens`` is ``tokenize_passage(passage_content)``."""
+    """Maps one AudioResult. ``passage_tokens`` is ``tokenize_passage(passage_content)``.
+
+    ``flags`` are the four audio flags; without them all four are false.
+    """
+    flags = flags or AudioFlags()
     rows: list[AlignedWord] = result["words"]
     score = result["score"]
     built: list[tuple[tuple[int, int], WorkerMiscue]] = []
@@ -181,9 +190,9 @@ def to_worker_result(
         job_id=job_id,
         reading_score=min(100.0, max(0.0, pct)) if math.isfinite(pct) else 0.0,
         wpm=wpm if wpm is not None and math.isfinite(wpm) and wpm >= 0 else 0.0,
-        is_word_by_word=False,
-        is_disregard_punctuation=False,
-        is_monotonous=False,
-        is_hardly_audible=False,
+        is_word_by_word=flags.word_by_word,
+        is_disregard_punctuation=flags.disregard_punctuation,
+        is_monotonous=flags.monotonous,
+        is_hardly_audible=flags.hardly_audible,
         miscues=[m for _, m in built],
     )

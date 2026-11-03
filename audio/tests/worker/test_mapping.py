@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+from audio.flags import AudioFlags
 from audio.models import COUNTED_TAGS, AlignedWord, AudioResult, ReadingScore, Tag, new_row
 from audio.worker.mapping import TAG_TO_MISCUE_TYPE, to_worker_result
 from tests.conftest import FakeG2P
@@ -289,7 +290,7 @@ def test_wpm_none_and_score_clamped() -> None:
     assert math.isfinite(run([], pct=float("nan")).reading_score)
 
 
-def test_flags_are_false() -> None:
+def test_flags_default_to_false() -> None:
     out = run([])
     flags = [
         out.is_word_by_word,
@@ -298,3 +299,14 @@ def test_flags_are_false() -> None:
         out.is_hardly_audible,
     ]
     assert not any(flags)
+
+
+def test_flags_are_copied_to_the_response() -> None:
+    flags = AudioFlags(word_by_word=True, monotonous=True)
+    out = to_worker_result(uuid4(), result([]), PASSAGE, FakeG2P(), flags)
+    assert (
+        out.is_word_by_word,
+        out.is_disregard_punctuation,
+        out.is_monotonous,
+        out.is_hardly_audible,
+    ) == (True, False, True, False)
