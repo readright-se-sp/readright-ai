@@ -23,9 +23,9 @@ class AudioSettings(BaseSettings):
     ASR_COMPUTE_TYPE: str = "float16"  # int8 on CPU
     ASR_BATCH_SIZE: int = 8
 
-    # Lane B (phonetic lane). PHONETIC_ENABLED=false (the default until B6b shows Lane B beats
-    # Lane A against teacher labels) runs Lane A alone and loads no phoneme model.
-    PHONETIC_ENABLED: bool = False
+    # Lane B (phonetic lane), on by default since B6b showed against hand labels that it repairs
+    # Lane A's false errors. PHONETIC_ENABLED=false runs Lane A alone and loads no phoneme model.
+    PHONETIC_ENABLED: bool = True
 
     # Stage 0 passage preparation (espeak-ng).
     ESPEAK_LANGUAGE: str = "en-us"  # espeak voice
