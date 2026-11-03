@@ -1,4 +1,4 @@
-"""Audio-lane errors. The worker error codes are mapped in B7."""
+"""Audio-lane errors. The worker API (audio.worker) maps them to the worker error codes."""
 
 
 class MediaUnreadable(Exception):
@@ -11,3 +11,7 @@ class DeadlineExceeded(Exception):
 
 class RecognizerError(Exception):
     """A torch or CUDA error during recognition. The original error is chained."""
+
+
+class NoSpeech(Exception):
+    """ASR returned no words: there is nothing to analyse."""

@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -61,6 +61,13 @@ class AudioSettings(BaseSettings):
     T_FLAG_INCLUSIVE: bool = False
     OVERRULE_MATCH: bool = False  # false: Lane B never changes a row Lane A tagged match
     T_OVERRULE: float = 0.45
+
+    # Worker HTTP API (audio.worker, Phase I2).
+    WORKER_MAX_CONCURRENT_JOBS: int = Field(default=1, ge=1)  # jobs on the GPU at once
+    WORKER_ALLOWED_MEDIA_DIR: Path = Path("/scratch")  # wav_path must resolve inside it
+    WORKER_STATS_WINDOW: int = Field(default=20, ge=1)  # jobs in the rolling average
+    WORKER_DISCONNECT_POLL_S: float = Field(default=0.5, gt=0)
+    WORKER_LOG_LEVEL: str = "INFO"
 
     @model_validator(mode="after")
     def _check_thresholds(self) -> Self:
