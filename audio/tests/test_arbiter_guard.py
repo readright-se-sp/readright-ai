@@ -130,3 +130,28 @@ def test_short_word_rule_does_not_block_clears_or_longer_words():
     long_word = verdict(L.CORRECT, ("k",), short_word_max_phones=3)  # STOP has 4 phonemes
     assert long_word.label == L.MISPRONUNCIATION
     assert verdict(L.OMISSION, (), expected=IT, short_word_max_phones=3).label == L.OMISSION
+
+
+def test_overrule_match_off_keeps_the_match_and_the_evidence():
+    v = verdict(L.CORRECT, ("s",), overrule_match=False)
+    assert v.label == L.CORRECT and v.phonetic_check == PhoneticCheck.UNVERIFIABLE
+    assert v.reason == "match_kept" and v.distance_expected is not None
+
+
+def test_overrule_match_off_leaves_a_clean_match_alone():
+    v = verdict(L.CORRECT, STOP, overrule_match=False)
+    assert v.label == L.CORRECT and v.phonetic_check == PhoneticCheck.DONE and v.reason is None
+
+
+def test_overrule_match_off_does_not_block_clears_or_omissions():
+    assert verdict(L.SUBSTITUTION, STOP, overrule_match=False).label == L.CORRECT
+    assert verdict(L.OMISSION, STOP, overrule_match=False).label == L.CORRECT
+
+
+def test_t_flag_boundary_inclusive_or_not():
+    # heard "s t ɑ" vs "s t ɑ p": one indel of four = 0.25 = T_FLAG exactly
+    inclusive = verdict(L.MISPRONUNCIATION, ("s", "t", "ɑ"))
+    strict = verdict(L.MISPRONUNCIATION, ("s", "t", "ɑ"), t_flag_inclusive=False)
+    assert inclusive.distance_expected == pytest.approx(TF)
+    assert inclusive.label == L.CORRECT
+    assert strict.label == L.MISPRONUNCIATION

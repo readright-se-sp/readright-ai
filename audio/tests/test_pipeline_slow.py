@@ -40,7 +40,7 @@ def test_full_pipeline_on_one_recording(espeak_g2p):
 
     result = pipeline.run(str(wavs[0]), passage)
 
-    assert result["version"] == "6"
+    assert result["version"] == "7"
     judged = [w for w in result["words"] if "phonetic" in w]
     assert judged, "Lane B judged no rows"
     assert any(w["phonetic"]["check"] == "done" for w in judged)

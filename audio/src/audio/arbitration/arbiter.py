@@ -47,19 +47,20 @@ def _adaptive_overrule(
     return t_overrule
 
 
-def _label(stage3, d_exp, d_hyp, deviations, heard, t_flag, t_overrule):
+def _label(stage3, d_exp, d_hyp, deviations, heard, t_flag, t_overrule, flag_inclusive=True):
+    low = d_exp <= t_flag if flag_inclusive else d_exp < t_flag
     if stage3 == _L.CORRECT:
         if d_exp > t_overrule and deviations:
             return _L.MISPRONUNCIATION
         return _L.CORRECT
     if stage3 in (_L.SUBSTITUTION, _L.MISPRONUNCIATION):
-        if d_exp <= t_flag:
+        if low:
             return _L.CORRECT
         if d_hyp is None:
             return stage3
         return _L.SUBSTITUTION if d_hyp < d_exp else _L.MISPRONUNCIATION
     if stage3 == _L.OMISSION:
-        return _L.CORRECT if heard and d_exp <= t_flag else _L.OMISSION
+        return _L.CORRECT if heard and low else _L.OMISSION
     return stage3  # INSERTION passes through
 
 
@@ -74,12 +75,17 @@ def arbitrate(
     coverage_guard_ratio: float = 0.0,
     adaptive_overrule: bool = True,
     short_word_max_phones: int = 0,
+    overrule_match: bool = True,
+    t_flag_inclusive: bool = True,
 ) -> ArbitrationResult:
     """Final label per unit. A CORRECT word is only overruled when Lane B heard at least
     ceil(coverage_guard_ratio x shortest expected pronunciation) phonemes (0 = no guard); below
     that the label stays and the check is UNVERIFIABLE with reason "low_coverage". A CORRECT word
     whose shortest expected pronunciation has at most short_word_max_phones phonemes (0 = off) is
-    never overruled: same outcome with reason "short_word". Clearing and omissions are unaffected.
+    never overruled: same outcome with reason "short_word". With overrule_match false a CORRECT word
+    is never overruled at all: the same outcome with reason "match_kept" (the evidence is still
+    attached). Clearing and omissions are unaffected. A distance equal to t_flag clears a row when
+    t_flag_inclusive is true (<=) and keeps it when false (<).
     """
     n = len(lane_a.units)
     if join is not None and (len(join.unit_phonemes) != n or len(join.ms_per_phoneme) != n):
@@ -118,10 +124,21 @@ def arbitrate(
                 if stage3 == _L.CORRECT and adaptive_overrule
                 else t_overrule
             )
-            label = _label(stage3, exp.distance, d_hyp, exp.deviations, heard, t_flag, eff_overrule)
+            label = _label(
+                stage3,
+                exp.distance,
+                d_hyp,
+                exp.deviations,
+                heard,
+                t_flag,
+                eff_overrule,
+                t_flag_inclusive,
+            )
             if stage3 == _L.CORRECT and label != stage3:
                 shortest = min(len(v) for v in expected)
-                if shortest <= short_word_max_phones:
+                if not overrule_match:
+                    label, check, reason = stage3, PhoneticCheck.UNVERIFIABLE, "match_kept"
+                elif shortest <= short_word_max_phones:
                     label, check, reason = stage3, PhoneticCheck.UNVERIFIABLE, "short_word"
                 elif coverage_guard_ratio > 0 and len(heard) < math.ceil(
                     coverage_guard_ratio * shortest
