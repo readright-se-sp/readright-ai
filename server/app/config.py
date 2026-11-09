@@ -1,0 +1,111 @@
+import os
+from pathlib import Path
+from typing import Annotated, Self, TypeVar
+
+import httpx
+from dotenv import dotenv_values
+from pydantic import (
+    AliasChoices,
+    Field,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+T = TypeVar("T")
+_Finite = Annotated[T, Field(allow_inf_nan=False)]
+API_KEY_PLACEHOLDER = "change-me"  # value in .env.example
+_ENV_PREFIX = "MAI_"
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix=_ENV_PREFIX, env_file=".env", extra="ignore")
+
+    api_key: SecretStr
+    log_level: str = "INFO"
+    request_deadline_seconds: float = 115.0
+    allow_audio_only_on_video_failure: bool = False
+    default_output_key_prefix: str = "analyses/{request_id}/miscues/"
+    redis_url: SecretStr = SecretStr("redis://localhost:6379/0")  # may hold a password
+    in_progress_ttl_seconds: int = 130
+    result_ttl_seconds: PositiveInt = 604800
+    redis_timeout_seconds: PositiveFloat = 2.0
+    scratch_dir: Path | None = None
+    max_video_bytes: PositiveInt = 209_715_200  # 200 MiB
+    ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
+    audio_worker_url: str = "http://localhost:8001"
+    video_worker_url: str = "http://localhost:8002"
+    worker_connect_timeout_seconds: PositiveFloat = 5.0
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    aws_region: str = Field("ap-southeast-2", validation_alias=AliasChoices("AWS_REGION"))
+    upload_concurrency: PositiveInt = 8
+    clip_padding_ms: NonNegativeInt = 150
+    max_in_flight: PositiveInt = 10  # per process; run one uvicorn worker
+    # Defaults come from the deployment doc's initial time budget; tune after the benchmark.
+    stage_estimate_download_seconds: _Finite[NonNegativeFloat] = 15.0
+    stage_estimate_upload_seconds: _Finite[NonNegativeFloat] = 10.0
+    stage_estimate_lane_seconds: _Finite[PositiveFloat] = 75.0  # when a worker has no average
+    stats_cache_seconds: _Finite[NonNegativeFloat] = 1.0
+    dependency_timeout_seconds: _Finite[PositiveFloat] = 2.0
+
+    @field_validator("api_key")
+    @classmethod
+    def _check_api_key(cls, value: SecretStr) -> SecretStr:
+        key = value.get_secret_value().strip()
+        if not key:
+            raise ValueError("MAI_API_KEY must not be empty")
+        if key == API_KEY_PLACEHOLDER:
+            raise ValueError(
+                "MAI_API_KEY is still the placeholder from .env.example; set a real key"
+            )
+        return SecretStr(key)
+
+    @field_validator("s3_bucket", "s3_endpoint_url")
+    @classmethod
+    def _blank_is_unset(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+    @field_validator("audio_worker_url", "video_worker_url")
+    @classmethod
+    def _check_worker_url(cls, value: str) -> str:
+        try:
+            url = httpx.URL(value)
+        except httpx.InvalidURL as exc:
+            raise ValueError("must be an absolute http or https URL") from exc
+        if url.scheme not in ("http", "https") or not url.host:
+            raise ValueError("must be an absolute http or https URL")
+        return value
+
+    @model_validator(mode="after")
+    def _check_lease_outlives_deadline(self) -> Self:
+        # A lease that expires mid-request would let a retry start a second run.
+        if self.in_progress_ttl_seconds <= self.request_deadline_seconds:
+            raise ValueError(
+                "MAI_IN_PROGRESS_TTL_SECONDS must be greater than MAI_REQUEST_DEADLINE_SECONDS"
+            )
+        return self
+
+
+def env_file_overrides(env_file: str | Path = ".env") -> list[str]:
+    """MAI_* names set in `env_file` but overridden by a different value in the environment."""
+    # Windows env var names are case-insensitive, so compare upper-cased.
+    environ = {name.upper(): value for name, value in os.environ.items()}
+    overridden = set()
+    for name, file_value in dotenv_values(env_file).items():
+        upper = name.upper()
+        if upper.startswith(_ENV_PREFIX) and upper in environ and environ[upper] != file_value:
+            overridden.add(upper)
+    return sorted(overridden)
+
+
+def api_key_source() -> str:
+    """Where MAI_API_KEY comes from: "environment" or ".env". Never the value."""
+    in_environment = any(name.upper() == f"{_ENV_PREFIX}API_KEY" for name in os.environ)
+    return "environment" if in_environment else ".env"

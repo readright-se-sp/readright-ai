@@ -1,0 +1,80 @@
+import asyncio
+import logging
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Request, Response, Security
+
+from ..admission import Admission
+from ..auth import api_key_scheme
+from ..config import Settings
+from ..deadline import Deadline, deadline_var
+from ..errors import MAIError
+from ..idempotency import IdempotencyStore
+from ..logging import request_id_var
+from ..models import AnalysisRequest, AnalysisResponse, ErrorCode, ErrorResponse
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/v1", tags=["Analyses"], dependencies=[Security(api_key_scheme)])
+
+_ERROR_STATUSES = (400, 401, 409, 415, 422, 429, 500, 503, 504)
+
+
+def _replay(stored: AnalysisResponse, response: Response) -> AnalysisResponse:
+    logger.info("analysis replayed from stored result")
+    response.headers["X-MAI-Replayed"] = "true"
+    return stored
+
+
+@router.post(
+    "/analyses",
+    operation_id="createAnalysis",
+    summary="Analyze a reading recording (synchronous)",
+    response_model=AnalysisResponse,
+    responses={status: {"model": ErrorResponse} for status in _ERROR_STATUSES},
+)
+async def create_analysis(
+    body: AnalysisRequest, request: Request, response: Response
+) -> AnalysisResponse:
+    settings: Settings = request.app.state.settings
+    deadline = Deadline(settings.request_deadline_seconds)
+    deadline_var.set(deadline)
+    request_id_var.set(str(body.request_id))
+    request.app.state.last_request_at = datetime.now(UTC)  # any outcome
+    logger.info(
+        "analysis received",
+        extra={
+            "passage_title_length": len(body.passage_title),
+            "video_host": body.video_url.host,
+        },
+    )
+
+    store: IdempotencyStore = request.app.state.idempotency
+    stored = await store.lookup(body)
+    if stored is not None:
+        return _replay(stored, response)
+
+    # Admission: take an in-flight slot (429 at the cap), then check the estimate (429/503).
+    # Nothing is claimed yet, so a rejected request can be retried with the same request_id.
+    admission: Admission = request.app.state.admission
+    admission.acquire()
+    try:
+        await admission.check_deadline(deadline)
+
+        claimed = await store.claim(body)
+        if isinstance(claimed, AnalysisResponse):  # another request finished while we were claiming
+            return _replay(claimed, response)
+
+        timeout = asyncio.timeout(deadline.remaining())
+        try:
+            async with timeout:
+                result = await request.app.state.processor(body, settings)
+        except BaseException as exc:  # includes cancellation; errors are never cached
+            await store.release(body, claimed)
+            if isinstance(exc, TimeoutError) and timeout.expired():
+                raise MAIError(ErrorCode.TIMEOUT, "The request deadline was exceeded.") from exc
+            raise
+        await store.complete(body, claimed, result)
+        return result
+    finally:
+        admission.release()

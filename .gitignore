@@ -1,0 +1,21 @@
+# Local configuration (copy from .env.example)
+.env
+
+# Python
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+
+# temporary files
+misc/
+# Python bytecode outside __pycache__
+*.py[cod]
+
+# Downloaded / converted ML models (audio/models/crisper2_large_ct2 is ~1.5 GB)
+models/

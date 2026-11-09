@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "readright-server"
+dynamic = ["version"]
+description = "ReadRight MAI web server"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "pydantic-settings",
+    "python-dotenv",
+    "redis>=5.0.1",
+    "httpx",
+    "boto3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pyyaml",
+    "jsonschema",
+    "ruff",
+    "fakeredis[lua]>=2.40.0",
+    "respx",
+    "moto[s3]",
+]
+
+[tool.hatch.version]
+path = "app/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
