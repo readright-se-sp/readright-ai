@@ -10,7 +10,7 @@ The MAI (Microservices AI) is the AI layer of ReadRight, an oral reading assessm
 ## Layout
 
 - `server/`: FastAPI entry point. See [server/CLAUDE.md](server/CLAUDE.md).
-- `audio/`: audio lane. Lane A (word lane, post-pass) and Lane B (phonetic lane, arbitration) are built by different developers; integration in progress (Phase I1). See [audio/ROADMAP.md](audio/ROADMAP.md).
+- `audio/`: audio lane. Lane A (word lane, post-pass) and Lane B (phonetic lane, arbitration) are built by different developers; Lane B is integrated into Lane A and is on by default (`AUDIO_PHONETIC_ENABLED=true`; false runs Lane A alone). See [audio/ROADMAP.md](audio/ROADMAP.md).
 - `video/`: video lane, see [video/CLAUDE.md](video/CLAUDE.md).
 - `contracts/`: shared shapes live only here.
 - `compose.yaml` (production stack), `compose.override.yaml` (local moto S3), `compose.loadtest.yaml` (publishes the video worker on loopback for the load test), `Caddyfile`, `.env.example`, `scripts/` (`start-stack.sh`, `idle-check.sh`).

@@ -52,10 +52,20 @@ services:
       retries: 10
 
   audio-worker:
-    build: ./server
-    image: readright-mai-server
+    build: ./audio
+    image: readright-mai-audio
     restart: unless-stopped
-    command: uvicorn devtools.fake_workers:audio_app --host 0.0.0.0 --port 8001
+    environment:
+      AUDIO_PHONETIC_ENABLED: ${AUDIO_PHONETIC_ENABLED:-true}
+      AUDIO_WORKER_MAX_CONCURRENT_JOBS: ${AUDIO_WORKER_MAX_CONCURRENT_JOBS:-1}
+      AUDIO_WORKER_LOG_LEVEL: ${AUDIO_WORKER_LOG_LEVEL:-INFO}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     volumes:
       - scratch:/scratch:ro
     healthcheck:
@@ -63,6 +73,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+      start_period: 180s
 
   video-worker:
     build: ./video
