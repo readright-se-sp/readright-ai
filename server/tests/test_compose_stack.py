@@ -86,21 +86,13 @@ def test_api_key_is_a_required_interpolation_and_not_read_from_server_env_file(s
         assert "server" not in path.replace("\\", "/").split("/")
 
 
-@pytest.mark.parametrize(
-    ("name", "app", "port"),
-    [("audio-worker", "audio_app", "8001")],
-)
-def test_fake_workers_run_from_the_api_image(services, name, app, port):
-    """Criterion 12."""
-    worker, api = services[name], services["api"]
-    same_image = worker.get("image") is not None and worker.get("image") == api.get("image")
-    same_build = build_context(worker) is not None and build_context(worker) == build_context(api)
-    assert same_image or same_build
-    command = as_text(worker["command"])
-    assert f"uvicorn devtools.fake_workers:{app}" in command
-    assert "--host 0.0.0.0" in command
-    assert f"--port {port}" in command
+def test_audio_worker_runs_the_audio_image(services):
+    """The audio worker is its own image; compose.fake-audio.yaml swaps the fake one in."""
+    worker = services["audio-worker"]
+    assert worker["image"] == "readright-mai-audio"
+    assert "command" not in worker  # the image CMD starts the worker on port 8001
     assert "/health/ready" in as_text(worker["healthcheck"]["test"])
+    assert "8001" in as_text(worker["healthcheck"]["test"])
 
 
 def test_service_start_order(services):

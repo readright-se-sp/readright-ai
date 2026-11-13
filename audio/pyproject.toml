@@ -17,6 +17,8 @@ dependencies = [
     "torch>=2.6",
     "transformers>=4.40,<5",
     "numpy",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +26,7 @@ dev = [
     "pytest>=8",
     "pyright",
     "ruff",
+    "httpx",
 ]
 
 [tool.hatch.version]

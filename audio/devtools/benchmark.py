@@ -176,7 +176,8 @@ def main() -> None:
             def run_once(wav: Path) -> dict[str, float]:
                 timer.acc.clear()
                 timer.errors.clear()
-                # Release cached allocator blocks between runs (6 GiB card); outside the timed region.
+                # Release cached allocator blocks between runs (6 GiB card);
+                # outside the timed region.
                 gc.collect()
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
@@ -228,7 +229,8 @@ def main() -> None:
                     durations.append(dur)
                     totals.append(r["total"])
                     print(
-                        f"{wav.name[:12]} run {i + 1}: total {r['total']:.0f} ms ({dur:.1f}s audio)",
+                        f"{wav.name[:12]} run {i + 1}: total {r['total']:.0f} ms "
+                        f"({dur:.1f}s audio)",
                         flush=True,
                     )
                 per_file.append((wav.name, dur, statistics.median(totals)))
@@ -260,14 +262,16 @@ def main() -> None:
         f"(torch + CTranslate2); {loaded_mb:.0f} MB in use after load\n"
         f"- Model load: CrisperWhisper 2.0 large + alignment {asr_load_ms:.0f} ms; "
         f"Lane B recogniser {rec_load_ms:.0f} ms\n"
-        f"- {len(wavs)} recordings x {args.runs} runs = {len(runs)} timed runs, one warm-up not counted"
+        f"- {len(wavs)} recordings x {args.runs} runs = {len(runs)} timed runs, "
+        "one warm-up not counted"
     )
     machine = (
         f"- GPU: {props.name}, {props.total_memory / 2**30:.1f} GiB\n"
         f"- nvidia-smi after run: {smi_end} (name, total, used, driver)\n"
         f"- CUDA (torch build): {torch.version.cuda}; torch {torch.__version__}; "
         f"ctranslate2 {version('ctranslate2')}; whisperx {version('whisperx')}\n"
-        f"- ASR_COMPUTE_TYPE={settings.ASR_COMPUTE_TYPE}, ASR_BATCH_SIZE={settings.ASR_BATCH_SIZE}, "
+        f"- ASR_COMPUTE_TYPE={settings.ASR_COMPUTE_TYPE}, "
+        f"ASR_BATCH_SIZE={settings.ASR_BATCH_SIZE}, "
         f"PHONETIC_ENABLED=true, PHONEME_MODEL={settings.PHONEME_MODEL} "
         f"(fp16={settings.PHONEME_FP16})"
     )
@@ -287,7 +291,8 @@ def main() -> None:
 
     if args.readme:
         section = (
-            f"{SECTION}\n\nMeasured {today} with `devtools/benchmark.py` (real `AudioPipeline.run`, "
+            f"{SECTION}\n\nMeasured {today} with `devtools/benchmark.py` "
+            "(real `AudioPipeline.run`, "
             f"Lane B on, {len(wavs)} recordings x {args.runs} runs after one warm-up). {note}\n"
             f"Stage 5 is `PhoneticReviewer.review` minus stage 4 (it also covers passage prep, row "
             f"adapting and write-back).\n\n{table}\n\n{extra}\n\nMachine:\n{machine}\n"

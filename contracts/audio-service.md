@@ -1,6 +1,6 @@
 # Audio service contract
 
-**Version:** `6` (the `version` field of every response)
+**Version:** `7` (the `version` field of every response)
 
 What the server sends the audio service, what comes back, and what every tag means. The audio service's own models (`audio/src/audio/models.py`) follow this file. Change this file first, then the code (see "Rules for changing a contract" in the README).
 
@@ -20,7 +20,7 @@ An empty `passage_text` is an error.
 
 ```json
 {
-  "version": "6",
+  "version": "7",
   "words": [ /* rows, in reading order (see below) */ ],
   "score": {
     "counts": { "match": 9, "mispronunciation": 1, "substitution": 0, "omission": 0, "insertion": 1,
@@ -60,7 +60,7 @@ The README defines the core of each row as `(passage_word, spoken_word, start, e
 
 ### Phonetic evidence
 
-Lane B (the phonetic lane) re-judges the rows tagged `match`, `substitution`, `mispronunciation`, `omission` or `insertion` from the sound of the recording. Rows with any other tag are not judged and have no `phonetic` field. The field is also absent on every row when Lane B is turned off (`AUDIO_PHONETIC_ENABLED=false`), fails, or runs out of time (logged as `phonetic_check=skipped`; the request still succeeds with Lane A's tags).
+Lane B (the phonetic lane) re-judges the rows tagged `match`, `substitution`, `mispronunciation`, `omission` or `insertion` from the sound of the recording. Rows with any other tag are not judged and have no `phonetic` field. The field is also absent on every row when Lane B is turned off (`AUDIO_PHONETIC_ENABLED=false`; it is on by default), fails, or runs out of time (logged as `phonetic_check=skipped`; the request still succeeds with Lane A's tags).
 
 ```json
 "phonetic": { "expected_phonemes": ["k", "ɑ", "s", "t"], "heard_phonemes": ["k", "ɔ", "s", "t"],
@@ -76,9 +76,9 @@ Lane B (the phonetic lane) re-judges the rows tagged `match`, `substitution`, `m
 | `d_exp` | number \| null | Weighted phoneme distance from `heard_phonemes` to the passage word (0 identical; accent-table pairs cost almost nothing). `null` when not computed. |
 | `d_hyp` | number \| null | The same distance to the word the ASR wrote, for `substitution` / `mispronunciation` rows. `null` when not computed. |
 | `check` | string | `done`: Lane B decided the tag, so the letter-based `mispronunciation` rule does not run on this row. `unverifiable`: no timing, no phonemes heard, or a name the pronunciation lexicon does not cover; Lane A's tag stands. `skipped`: reserved. |
-| `reason` | string | Optional (added in v6). Present when `check` is `unverifiable`: why Lane B left Lane A's tag alone. One of `untimed` (the row has no timing), `no_heard` (no phonemes in the window), `name_not_in_lexicon` (a name the pronunciation lexicon does not cover), `low_coverage` (a `match` row where Lane B heard too few of the word's phonemes to overrule it), `short_word` (a `match` row for a very short word, which Lane B never overrules). New values may be added; treat an unknown one as "unverifiable". |
+| `reason` | string | Optional (added in v6). Present when `check` is `unverifiable`: why Lane B left Lane A's tag alone. One of `untimed` (the row has no timing), `no_heard` (no phonemes in the window), `name_not_in_lexicon` (a name the pronunciation lexicon does not cover), `low_coverage` (a `match` row where Lane B heard too few of the word's phonemes to overrule it), `short_word` (a `match` row for a very short word, which Lane B never overrules), `match_kept` (added in v7: a `match` row that Lane B would have overruled, kept because `AUDIO_OVERRULE_MATCH` is off; `d_exp` and the phonemes are still given). New values may be added; treat an unknown one as "unverifiable". |
 
-What Lane B may change on a row: `tag` among `match`, `substitution`, `mispronunciation`, `omission` and `insertion` (and `counted` with it). A `match` row is only overruled when Lane B heard the whole word (`AUDIO_COVERAGE_GUARD_RATIO`, default 1.0) and the word has more than `AUDIO_SHORT_WORD_MAX_PHONES` (default 3) phonemes; this keeps false overrules of correct reads under 2% on the calibration recordings (`audio/plans/phase-B6a.md`). A row Lane A tagged `mispronunciation` with detail `ending` may only end as `mispronunciation` or `match`, never `substitution`. Never the row order, the passage coverage, or any other field. A name (`proper_nouns`, or guessed) that is not in the lexicon is never turned from `match` into `mispronunciation` by sound: its `check` is `unverifiable`.
+What Lane B may change on a row: `tag` among `match`, `substitution`, `mispronunciation`, `omission` and `insertion` (and `counted` with it). With the default `AUDIO_OVERRULE_MATCH=false` Lane B never turns a `match` row into an error (it keeps the tag, with `check` `unverifiable` and `reason` `match_kept`); the next rule applies only when it is set to true. A `match` row is only overruled when Lane B heard the whole word (`AUDIO_COVERAGE_GUARD_RATIO`, default 1.0) and the word has more than `AUDIO_SHORT_WORD_MAX_PHONES` (default 3) phonemes; this keeps false overrules of correct reads under 2% on the calibration recordings (`audio/plans/phase-B6a.md`). Against hand labels, overruling a `match` was wrong 9 times out of 10, which is why it is off (`audio/plans/phase-B6b.md`). A distance exactly equal to `AUDIO_T_FLAG` (0.25) does not clear a row (`AUDIO_T_FLAG_INCLUSIVE=false`). A row Lane A tagged `mispronunciation` with detail `ending` may only end as `mispronunciation` or `match`, never `substitution`. Never the row order, the passage coverage, or any other field. A name (`proper_nouns`, or guessed) that is not in the lexicon is never turned from `match` into `mispronunciation` by sound: its `check` is `unverifiable`.
 
 ## Tags
 

@@ -20,7 +20,9 @@ TABLE = {
 TEXT = "the cat sat"
 
 # Tuning values pinned here so these tests stay about behaviour, not about the B6a defaults.
-TEST_SETTINGS = AudioSettings(_env_file=None, COVERAGE_GUARD_RATIO=0.5, SHORT_WORD_MAX_PHONES=0)
+TEST_SETTINGS = AudioSettings(
+    _env_file=None, COVERAGE_GUARD_RATIO=0.5, SHORT_WORD_MAX_PHONES=0, OVERRULE_MATCH=True
+)
 
 
 class FakeRecogniser:
@@ -59,8 +61,8 @@ def run(heard_text, recogniser=None):
 
 
 def test_contract_version_is_6():
-    assert CONTRACT_VERSION == "6"
-    assert run(TEXT)["version"] == "6"
+    assert CONTRACT_VERSION == "7"
+    assert run(TEXT)["version"] == "7"
 
 
 def test_without_a_reviewer_the_output_equals_analyze_and_has_no_phonetic_field():

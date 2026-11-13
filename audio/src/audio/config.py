@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,9 +23,9 @@ class AudioSettings(BaseSettings):
     ASR_COMPUTE_TYPE: str = "float16"  # int8 on CPU
     ASR_BATCH_SIZE: int = 8
 
-    # Lane B (phonetic lane). PHONETIC_ENABLED=false (the default until B6b shows Lane B beats
-    # Lane A against teacher labels) runs Lane A alone and loads no phoneme model.
-    PHONETIC_ENABLED: bool = False
+    # Lane B (phonetic lane), on by default since B6b showed against hand labels that it repairs
+    # Lane A's false errors. PHONETIC_ENABLED=false runs Lane A alone and loads no phoneme model.
+    PHONETIC_ENABLED: bool = True
 
     # Stage 0 passage preparation (espeak-ng).
     ESPEAK_LANGUAGE: str = "en-us"  # espeak voice
@@ -47,7 +47,8 @@ class AudioSettings(BaseSettings):
     COVERAGE_MAX_GAP_MS: int = 300  # silence that ends a coverage run
 
     # Arbitration (B5, B6a). The guard, short-word and adaptive values come from the B6a sweep;
-    # T_FLAG and T_OVERRULE are still starting values for B6b (needs labels).
+    # OVERRULE_MATCH, T_FLAG and T_FLAG_INCLUSIVE come from the B6b label sweep
+    # (plans/phase-B6b.md).
     COVERAGE_GUARD_RATIO: float = (
         1.0  # CORRECT is overruled only if >= this share of phonemes heard
     )
@@ -56,7 +57,17 @@ class AudioSettings(BaseSettings):
         True  # longer overrule threshold for short words with one extra phoneme
     )
     T_FLAG: float = 0.25
+    # true: a distance equal to T_FLAG clears a row (<=); false: it keeps the error (<)
+    T_FLAG_INCLUSIVE: bool = False
+    OVERRULE_MATCH: bool = False  # false: Lane B never changes a row Lane A tagged match
     T_OVERRULE: float = 0.45
+
+    # Worker HTTP API (audio.worker, Phase I2).
+    WORKER_MAX_CONCURRENT_JOBS: int = Field(default=1, ge=1)  # jobs on the GPU at once
+    WORKER_ALLOWED_MEDIA_DIR: Path = Path("/scratch")  # wav_path must resolve inside it
+    WORKER_STATS_WINDOW: int = Field(default=20, ge=1)  # jobs in the rolling average
+    WORKER_DISCONNECT_POLL_S: float = Field(default=0.5, gt=0)
+    WORKER_LOG_LEVEL: str = "INFO"
 
     @model_validator(mode="after")
     def _check_thresholds(self) -> Self:
