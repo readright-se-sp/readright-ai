@@ -1,0 +1,459 @@
+ReadRight
+GO2 AI Architecture Specification
+Revision 2 — Phonetic lane over the whole recording · 31 October 2026
+
+[TABLE]
+Field | Value
+Project | ReadRight — AI-Powered Oral Reading Practice System (Phil-IRI aligned)
+Team | 2526-sem2-cs342-11
+Course | CS342 Software Engineering, CIT-University
+Module | General Objective 2 (GO2) — Audio-Based Miscue Classification
+Passage language | English only
+Service | readright-api, GO2Pipeline
+Status | Selected architecture — Revision 2, for implementation
+Revision | Rev 2 (31 October 2026): the phonetic lane runs over the whole recording and every word is diagnosed. See Section 0 for a side-by-side summary of changes.
+[/TABLE]
+
+
+Contents
+If this table appears empty, right-click it in Word and choose Update Field.
+
+
+0. Revision Summary (Rev 1 → Rev 2)
+Revision 2 keeps the Rev 1 decision record (Options 1, 2 and 6) and changes how Option 2 is applied. The table below compares the two revisions section by section. Sections not listed are unchanged.
+[TABLE]
+WHAT CHANGED, IN ONE SENTENCE / Rev 1 ran the phonetic verifier only on words WhisperX had already flagged; Rev 2 runs the phoneme recogniser once over the whole recording, joins its output to WhisperX words by time, and diagnoses every word — so miscues WhisperX hides by auto-correcting are no longer invisible.
+[/TABLE]
+
+[TABLE]
+Area (section) | Rev 1 (original) | Rev 2 (this revision) | Why
+Phonetic lane scope (1, 4, 5.5, 5.6) | Verifier runs only on SUBSTITUTION / MISPRONUNCIATION positions (est. 5–15%) | Phoneme recogniser runs once over the whole recording, in parallel with WhisperX; every word is diagnosed | WhisperX auto-corrects mispronunciations to the passage word; those positions were labelled CORRECT and never checked
+Audio given to the phoneme model (5.6) | One clip per flagged word, submitted in batches | One pass over the full recording; phonemes assigned to words by timestamp | Forced-alignment boundaries clip edge consonants; phoneme models degrade on sub-second clips
+Decision thresholds (5.6, 9) | One PHONETIC_THRESHOLD | T_FLAG for flagged words; stricter T_OVERRULE before a WhisperX-matched word becomes a miscue | Phoneme slips on correctly read words must not overrule WhisperX easily
+Substitution vs mispronunciation (5.6) | Distance to the passage word only | Distance to the passage word and to the WhisperX word | Separates a real other word, a mispronunciation, and a WhisperX mishearing
+Hidden repetitions / self-corrections (5.7) | Post-pass sees only insertions WhisperX kept | Adds coverage candidates (speech no word covers) and duration anomalies | WhisperX drops disfluencies and false starts
+Omissions (5.6) | Alignment delete | Delete confirmed by no speech in the gap; words dropped by VAD or WhisperX are restored | Quiet speech and WhisperX hallucination both distort omission counts
+Alignment defect diagnosis (3.1) | Suspected inverted Needleman–Wunsch costs | Current aligner is difflib.SequenceMatcher (greedy, no costs); replace it | Reproduced: a struggling reader produced 9 omissions + 9 insertions
+Transcriber output (3.4, new) | Not covered | Punctuation kept on words; missing start/end/score; score defaults to 1.0 | Each causes misalignment or a crash before classification
+Normalisation (5.3) | 6 rules | 9 rules: adds numbers, compounds, fillers; rule 1 explicitly applies to ASR words | WhisperX writes digits and keeps punctuation
+Alignment (5.4) | NW; passage-index invariant | Adds hypothesis-index invariant, pairing tie-break, two-to-one merge | TC-07d-1 cannot pass with one-to-one alignment
+Passage preparation (5.1) | CMUdict → g2p_en → lexicon | espeak-ng IPA (same symbols as the recogniser) → lexicon; content-hash cache key | Expected and observed phonemes must share one symbol set
+Accent table (6) | Six consonant pairs | Adds vowel and final-cluster entries | Matched words are now diagnosed, so every missing entry becomes a false positive
+Reversal (7.2) | Deferred; labelled Substitution | Labelled by a string check; count unchanged | Cheap and improves feedback
+Integration (8) | Four new components | Six: adds PhonemeRecognizer (singleton) and Arbiter; concurrency and memory notes | Lane B is a second model in the request path
+Parameters (9) | Five | Nine: adds T_OVERRULE, JOIN_PAD_MS, COVERAGE_MIN_MS, DURATION_RATIO, TIE_BREAK | Each new decision needs a validated value
+Tests (10) | Per-stage, invariants, fixture | Adds struggling-reader trace, hidden-miscue paths, accented clean readings, hypothesis invariant | Rev 2 adds a new false-positive risk that must be measured
+Future work (12) | Option 3 future work | Option 3 partly adopted; phonetic-only pipeline recorded as rejected | Reflects the Rev 2 decision
+Implementation sequence (14) | Phase 2: verifier + accent table | Phase 0 adds transcriber fixes; Phase 2 split into Lane B, comparison, arbiter | Smaller, separately testable steps
+[/TABLE]
+
+Unchanged: scope (2), the Oral Reading Score formula (5.8), the Phil-IRI compliance requirement and open decision on /θ/→/t/ (6.1, 6.4), the taxonomy decisions in 7.1, the abstention recommendation (11), and the regression-fixture principle (10.3).
+Open item for the team: Rev 2 moves towards Option 3 (parallel dual-lane). Confirm against the GO2 AI Architecture — Design Options document that the Rev 2 shape is acceptable, and record the decision in the SDD.
+1. Decision Record
+The team evaluated six candidate architectures (see GO2 AI Architecture — Design Options). The following were selected:
+[TABLE]
+Selected | Role in the design
+Option 1 — Lexical normalisation | Removes orthographic false positives before comparison
+Option 2 — Phonetic verification (Rev 2: whole recording) | A phoneme recogniser runs once over the whole recording; every word is checked against its expected phonemes. Finds miscues WhisperX hides and implements the Phil-IRI dialectal-variation rule
+Option 6 — Detect-then-diagnose | The structural shape: Options 1 and 2 form the two stages; in Rev 2 the diagnosis stage covers every word
+[/TABLE]
+
+Not selected: Option 4 (reference-first) is recorded as future work. Option 5 (constrained decoding) is rejected on validity grounds. Option 3 (parallel dual-lane) is not adopted as a separate design, but Rev 2 takes its central idea — both recognisers process the whole recording — while keeping WhisperX as the single authority on words (see 1.1).
+How the three combine. Option 6 is not a separate component. It is the organising structure: a cheap, high-recall detection stage proposes a label for every word from the word lane, and a diagnosis stage confirms, clears or overrules each label using the phonetic lane. Option 1 lives in the detection stage; Option 2 is the diagnosis stage.
+1.1 Revision 2 decision — phonetic lane over the whole recording
+Problem with Rev 1. WhisperX's decoder is a language model. When a learner mispronounces a word, WhisperX frequently writes the passage word anyway (fink → think). Alignment then reports a match, Rev 1 labels it CORRECT, and the verifier never sees it. Rev 1 could therefore remove WhisperX's false positives but could never find a miscue WhisperX did not flag — recall was bounded by WhisperX itself, which conflicts with FR F4 (all miscues must be assessed accurately).
+Decision. Run the phoneme recogniser once over the whole recording, in parallel with WhisperX. Join its output to WhisperX words by timestamp and diagnose every word. WhisperX remains the authority on which word was read, where and when; the phonetic lane answers only how each word sounded.
+Accepted costs. A second model in every request (time and roughly 1.2 GB memory for a 300M-parameter recogniser), more logic (join, coverage check, two thresholds), and a new risk: phoneme-recognition slips on correctly read words can create false positives. The risk is controlled by a stricter overrule threshold (5.6), the accent table (6) and the tests in Section 10.
+Rejected alternative — phonetic lane only. Phonemes alone give no word boundaries, no timings and no identity for substituted words, and nothing corrects the recogniser's own slips. That design is Option 4 without its scoring model and remains future work (12).
+2. Scope
+In scope: the path from audio.wav to a labelled miscue set and the Phil-IRI Oral Reading Score.
+Out of scope: Filipino-language passages, GO1 input quality, GO3 video/prosody, GO4 dashboard, teacher-facing features, DepEd document generation.
+[TABLE]
+FRAMING / Accuracy measures (Word Error Rate, Cohen’s Kappa, precision/recall) are system validation benchmarks — acceptance criteria for a delivered system, not research hypotheses.
+[/TABLE]
+
+3. Preconditions
+[TABLE]
+THESE ARE DEFECTS, NOT DESIGN / These are defects in the existing pipeline. They must be corrected before the architecture below can be measured, because normalisation and verification both operate on alignment output.
+[/TABLE]
+
+3.1 Alignment cost constraint
+Symptom observed: the majority of word positions classify as OMISSION.
+OMISSION is the fallback branch of the classification decision tree — it fires when no hypothesis token is aligned to a passage position. Mass omission therefore indicates alignment failure, not classifier failure.
+Finding (Rev 2). The current aligner is not Needleman–Wunsch. miscue_classifier.py uses difflib.SequenceMatcher, which has no cost model, so there are no cost constants to correct. Two properties of it produce the symptom:
+Greedy anchoring. It locks in the longest run of exactly equal words first and never revisits it; ties go to the earliest passage position. With few exact matches (a struggling reader) and a repeated phrase in the passage, the first anchor can pair the start of the passage with the end of the reading.
+Position pairing. Inside a replace block, words are paired by position, so one extra or missing word shifts every pairing after it.
+passage: the boy saw the dog and the dog saw the boy
+spoken : a boy see a dog an a dog see the boy
+
+SequenceMatcher: 9 insertions, 2 correct, 9 omissions   (anchors on the wrong "the boy")
+Needleman-Wunsch: 11 positions in order - 5 match, 6 sub
+Action: replace the aligner with the 5.4 design. The cost constraint applies to the new aligner:
+REQUIRED:   mismatch_cost  <  2 × gap_cost
+With gap_cost = 0.9 and a graded mismatch cost capped at 1.0, delete-plus-insert (1.8) is never cheaper than pairing two words in the same position.
+3.2 Insertion detection requires re-verification
+Insertion detection was previously recorded as working correctly. Under the failure above, unmatched hypothesis tokens would flood the insertion branch — so apparent insertion activity may be the same defect presenting differently. Re-verify against a recording with a known insertion count. Label the fixture from the audio, not from the transcript: WhisperX drops many inserted fillers and false starts, so a transcript-based count can pass while real insertions are missed.
+3.3 Taxonomy corrections
+See Section 7. Four corrections are required to conform to the 2018 Phil-IRI manual; they are independent of the architecture and should be scheduled alongside the alignment fix.
+3.4 Transcriber output defects (new in Rev 2)
+Defects in transcriber.py that reach the classifier before any architecture applies:
+Punctuation retained. WhisperX words carry punctuation (dog., said,) while the passage tokenizer strips it. Each sentence end becomes a mismatch that widens replace blocks. Normalisation rule 1 (5.3) must run on ASR words.
+Missing timing. Words with no alignable characters (digits, symbols) can lack start, end and score. transcriber.py reads seg["start"] directly and raises KeyError; scoring reads the first and last word's timings.
+Missing score treated as certainty. seg.get("score", 1.0) gives an unaligned word the highest possible confidence.
+Alignment score used as refusal. score < 0.3 currently means refusal_to_pronounce. The score measures how well WhisperX's own text fits the audio, not whether the learner attempted the word. Removed with Refusal per 7.1.
+Action: strip punctuation through the normaliser; mark words without timings as unverifiable and interpolate their times for display only.
+
+
+4. Architecture Overview
+                    +--------------------------------------------+
+passage_id -------->|  STAGE 0 - Passage Preparation (cached)    |
+                    |  expected phonemes . lexicon . proper nouns|
+                    +----------------------+---------------------+
+                                           | prepared passage
+                                           v
+            +--> LANE A [WhisperX] --> [NORMALISE] --> [ALIGN] --> [DETECT] ---+
+            |     words + times         Option 1       NW        Option 6 s1  |
+audio.wav --+                                                                  |
+            |                                                                  v
+            +--> LANE B [PHONEME RECOGNISER] -- phonemes + times --> [JOIN BY TIME]
+                  one pass, whole recording                                |
+                                                                           v
+                     [COMPARE] weighted phoneme distance + accent table (Section 6)
+                                                                           |
+                                                                           v
+                     [ARBITRATE] word lane + phonetic lane, EVERY word
+                                 + coverage candidates (speech no word covers)
+                                                                           |
+                                                                           v
+                     [SEQUENCE POST-PASS] --> [SCORE]
+                      repetition . self-corr     Phil-IRI
+Key property 1 — every word is diagnosed. A word WhisperX auto-corrected to the passage word is still compared with what was heard. Rev 1 sent only Substitution and Mispronunciation flags to the verifier.
+Key property 2 — WhisperX remains the word authority. It supplies word identity, word boundaries and timings. The phonetic lane only answers how each word sounded. Time is the join key between the lanes.
+Key property 3 — overruling WhisperX needs stronger evidence. A word WhisperX matched becomes a miscue only above the stricter T_OVERRULE threshold (5.6, 9).
+Key property 4 — graceful degradation. If Lane B is unavailable, the pipeline returns Lane A labels. The request never fails because of the phonetic lane.
+5. Component Specification
+5.1 Stage 0 — Passage Preparation
+Runs once per passage and is cached; not per request. The cache key is passage_id plus a hash of the passage text and the lexicon version, so edits invalidate the cache.
+[TABLE]
+Output | Source | Notes
+Raw token list | passages.passage_text | The scoring denominator. Never derived from normalised units.
+Normalised units | Normaliser (5.3) | Comparison keys for the passage side
+Expected phoneme sequences | espeak-ng (IPA) → custom lexicon; CMUdict / g2p_en only through an exact ARPAbet→IPA mapping | Same symbol set as the recogniser (5.6). Stress markers stripped. All accepted variants per word (the: ðə / ði)
+Proper noun set | passages.proper_nouns, falling back to capitalisation extraction | See 8.2 — the DB column does not yet exist. Capitalisation extraction misses sentence-initial names
+[/TABLE]
+
+Custom lexicon requirement. Phil-IRI English passages are Philippine-contextualised and contain Filipino proper nouns and terms (Aling Nena, Cebu, jeepney, pandesal). These are absent from CMUdict, and English-trained G2P applies English orthographic rules to them, producing wrong expected pronunciations and false mispronunciations on correctly-read words.
+The lexicon is hand-written, finite (an estimated 30–60 entries across the full passage set), and tractable because Filipino orthography is near one-to-one grapheme-to-phoneme. Multiple accepted variants should be listed where both Filipino and anglicised pronunciations are legitimate readings.
+Symbol-set rule (Rev 2). Expected and observed phonemes must use one inventory. The recommended recogniser emits espeak IPA, so generating expected phonemes with espeak-ng avoids a lossy mapping. Heteronyms (read, live, lead) need sentence context or must list both pronunciations as accepted variants.
+5.2 Token model
+Every token carries two representations:
+@dataclass
+class Unit:
+    surface: str              # original text - never modified
+    key: str                  # normalised comparison key
+    passage_span: int = 1     # raw passage words this unit covers
+    source_indices: list[int]
+    start: float | None = None    # hypothesis side only
+    end: float | None = None
+    align_score: float | None = None    # WhisperX alignment score; None if unaligned
+    verifiable: bool = True             # False when WhisperX gave no timing
+
+@dataclass
+class WordVerdict:                      # one per passage position, built in 5.6
+    expected_phonemes: list[list[str]]  # accepted variants from Stage 0
+    heard_phonemes: list[str]           # Lane B phonemes joined by time
+    distance_expected: float | None     # best variant vs heard
+    distance_hypothesis: float | None   # WhisperX word vs heard
+    deviations: list[tuple[str, str]]   # (expected, heard) phoneme pairs
+Alignment matches on key. Display, annotated transcript, and scoring use surface. Overwriting surface corrupts Phil-IRI scores silently.
+passage_span exists because multi-word contractions merge into single units. A merged unit representing "do not" carries passage_span=2, and scores credit two words when correct.
+Hypothesis units without WhisperX timing are marked verifiable = False. The arbiter keeps their Stage 3 label rather than guessing which phonemes belong to them.
+5.3 Stage 1 — Lexical Normalisation (Option 1)
+[TABLE]
+INVARIANT / One function, applied identically to the passage and to the ASR hypothesis, producing the same key for the same sounds. A rule that runs on only one side is a defect.
+[/TABLE]
+
+Rule order is fixed and significant:
+[TABLE]
+# | Rule | Behaviour
+1 | Orthographic | Unicode-normalise apostrophes, lowercase, strip punctuation retaining apostrophes. Applies to ASR words too (dog. → dog)
+2 | Numbers (new) | Spell digits as words (5 → five; 1990 → nineteen ninety, with listed variants)
+3 | Multi-token merge | Fuse known expanded contractions (do not → one unit, key dont); set passage_span on the passage side
+4 | Compounds (new) | Hyphenated, spaced and closed forms share one key (ice-cream / ice cream / icecream; every one / everyone where listed)
+5 | Contractions | Closed lookup table; canonical form is the collapsed variant
+6 | Possessives | Strip trailing ’s / s’; also strip a trailing plural s when the passage word is possessive and the hypothesis is not
+7 | Apostrophe removal | Drop remaining apostrophes
+8 | Homophones | Map to an equivalence class identifier (there, their, theyre → H_THERE)
+9 | Fillers (new) | Remove um, uh, er from the unit list and record them separately; not Phil-IRI miscues (team to confirm)
+[/TABLE]
+
+Order dependency at rules 5–6: it’s and boy’s are orthographically indistinguishable. Contractions are a closed set, so that table is consulted first; any remaining ’s is a possessive. Numbers (rule 2) run before merging so that spelled-out numbers can merge like other multi-token units.
+Homophone table scoping. English contains thousands of homophones; the system needs only those appearing in its passages. Extract the unique vocabulary across all passages, intersect with a homophone list, and store the result. This yields an estimated 30–60 entries and is complete for the deployed passage set.
+Justification. Phil-IRI scores what the learner says. A homophone read aloud is not a miscue, and orthographic variants of the same utterance are not miscues. Treating them as equivalent is semantically correct, not a workaround.
+5.4 Stage 2 — Alignment
+Needleman–Wunsch over key values, returning a complete operation trace, not a match list.
+[("match", 0, 0), ("sub", 1, 1), ("delete", 2, None), ("insert", None, 2)]
+Invariant: every passage index and every hypothesis index appears exactly once across all operations. Assert both in tests — an incomplete trace makes the classifier fill gaps with omissions or silently drop insertions.
+Costs:
+MATCH    = 0.0
+GAP      = 0.9
+MISMATCH = graded   # 0.0-1.0, proportional to edit distance between keys
+Graded mismatch cost means near-misses align as substitutions (the learner attempted the word) while unrelated words prefer a gap. Flat cost cannot express that distinction.
+Proper-noun relaxation applies here, not in the normaliser — it is asymmetric (a lexicon built from the passage, loosening matches on the hypothesis) and therefore cannot satisfy the 5.3 invariant:
+def sub_cost(p_unit, h_unit, proper_nouns):
+    if p_unit.key == h_unit.key:
+        return 0.0
+    if p_unit.key in proper_nouns and fuzzy_close(p_unit.key, h_unit.key):
+        return 0.3
+    return min(1.0, levenshtein(p_unit.key, h_unit.key) / max(len(p_unit.key), 1))
+Tie-break. When two moves have equal cost, prefer pairing (diagonal) over a gap: assume the learner attempted the word. The rule is fixed in code and covered by a test so identical recordings always produce identical traces.
+Graded cost input. When keys differ, compute the graded cost on the form before rule 8. Homophone class identifiers (H_THERE) carry no spelling similarity.
+Two-to-one merge. TC-07d-1 (Maria / Mari a) needs one passage unit matched to two hypothesis tokens, which one-to-one alignment cannot produce. Add a merge move: adjacent hypothesis tokens whose concatenated key equals, or proper-noun-fuzzy-matches, a passage key align as one unit.
+5.5 Stage 3 — Detection (Option 6, first stage)
+Maps alignment operations to provisional labels. Tuned for recall. In Rev 2 every position proceeds to diagnosis; the provisional label decides which threshold applies there.
+[TABLE]
+Operation | Provisional label | Diagnosis in 5.6
+match | CORRECT | Yes — stricter T_OVERRULE (Rev 1: not checked)
+sub (real word) | SUBSTITUTION | Yes — T_FLAG
+sub (non-word / low similarity) | MISPRONUNCIATION | Yes — T_FLAG
+delete | OMISSION | Yes — the gap is checked for speech
+insert | INSERTION | To the post-pass (5.7)
+(no WhisperX word) speech in a gap | COVERAGE CANDIDATE | To the post-pass (5.7) — new in Rev 2
+[/TABLE]
+
+5.6 Stage 4 — Phonetic Lane and Arbitration (Option 2, Option 6 second stage)
+Lane B starts as soon as audio.wav exists and runs in parallel with WhisperX; it needs only the audio. Per request:
+Recognise — run the phoneme recogniser once over the whole recording, without VAD trimming, to get phonemes with frame timestamps (about 20 ms per frame; repeats merged, blanks dropped).
+Join by time — assign each phoneme to the hypothesis unit whose window [start − pad, end + pad] contains it (JOIN_PAD_MS, Section 9). Phonemes in no window form coverage candidates.
+Compare — weighted phoneme-sequence edit distance against every expected variant (best variant wins) and against the WhisperX word's phonemes, using the cost matrix in Section 6; normalised by expected length.
+Arbitrate — apply the rules below to every word.
+Record — store distances and deviating phonemes on every word (WordVerdict), whether or not the label changes. This feeds threshold tuning and abstention (Section 11).
+Arbitration rules (step 4), applied per word:
+[TABLE]
+Stage 3 label | Phonetic evidence | Final label
+CORRECT (match) | Distance to the passage word ≤ T_OVERRULE | CORRECT
+CORRECT (match) | Distance > T_OVERRULE, deviations outside the accent table | MISPRONUNCIATION — WhisperX auto-corrected
+SUBSTITUTION / MISPRONUNCIATION | Distance to the passage word ≤ T_FLAG | CORRECT — WhisperX misheard, or an accent variant
+SUBSTITUTION / MISPRONUNCIATION | Closer to the WhisperX word than to the passage word | SUBSTITUTION
+SUBSTITUTION / MISPRONUNCIATION | Far from both | MISPRONUNCIATION
+OMISSION | No speech phonemes in the gap | OMISSION
+OMISSION | Speech in the gap close to the passage word | CORRECT — VAD or WhisperX dropped a spoken word
+Any, unit not verifiable | — | Stage 3 label kept
+[/TABLE]
+
+Asymmetric thresholds. T_OVERRULE > T_FLAG. WhisperX's language model corrects its own listening errors on correctly read words; the phonetic lane has no such correction and can mishear single phonemes. A word WhisperX matched therefore needs stronger evidence before it becomes a miscue. Both values are tuned against the regression fixture (Section 9).
+Why the whole recording, not clips. Rev 1 extracted one clip per flagged word. Forced-alignment boundaries are tight and clip edge consonants, and phoneme models degrade on sub-second input. One pass keeps acoustic context and replaces the Rev 1 per-clip batching requirement.
+Graceful degradation. If Lane B is unavailable or fails, the pipeline returns Stage 3 labels with WhisperX timings — equivalent to Option 1 alone — and records that the phonetic check was skipped. This must not fail the request.
+5.7 Stage 5 — Sequence Post-Pass
+Two Phil-IRI behaviours are not expressible in one-to-one alignment and require a pass over the trace.
+Repetition and self-correction. Both present as one passage position with two attempts. In Rev 2 they arrive from three sources: an insertion adjacent to a matched or substituted position (attempts WhisperX kept); a coverage candidate from 5.6 (attempts WhisperX dropped); and a duration anomaly — a unit much longer than its phoneme count predicts (DURATION_RATIO), hiding several attempts inside one WhisperX word:
+for each insertion or coverage candidate adjacent to a word position:
+    if not phonetically similar to the neighbouring passage word:
+        leave as a genuine INSERTION
+    elif first attempt matched the passage word:
+        REPETITION        -> 1 error;  remove the phantom insertion
+    else:
+        SELF_CORRECTION   -> 0 errors; remove the phantom insertion
+Multi-attempt runs (mon… monk… money) collapse to a single verdict. Partial attempts may not survive ASR as dictionary words — use similarity, not exact match.
+Run collapsing. The 2018 manual counts a word or phrase omitted as one error; likewise for insertion and repetition. Consecutive operations of the same type collapse into a single miscue event. Three adjacent omissions are one omission, not three. Two omissions belong to one run when they occupy adjacent passage positions with no spoken unit between them.
+Transposition. A swapped pair (A B read as B A) appears either as two adjacent substitutions where each hypothesis word equals the other passage word, or as insert–match–delete around a shared word. Both patterns collapse to one TRANSPOSITION (one error).
+Reversal (label only). A substitution whose hypothesis word is the passage word reversed (was / saw), or with adjacent letters swapped, is relabelled REVERSAL. The miscue count is unchanged.
+5.8 Stage 6 — Scoring
+Oral Reading Score = (number of words - number of miscues) / number of words x 100
+number of words is len(passage.raw_tokens) — always the raw list, never normalised units.
+Each miscue carries equal weight regardless of type; the 2018 manual applies no major/minor distinction.
+A correct merged unit credits passage_span words.
+
+
+6. The Accent Equivalence Table
+6.1 Requirement
+ReadRight assesses Filipino Grade 4 learners reading English passages. Philippine English has a systematic phonological profile. A generic English acoustic model scores these features as mispronunciations, producing a false-positive source larger than the enumerated FR-07 defects — systematic rather than random, and therefore it does not average out.
+[TABLE]
+PHIL-IRI COMPLIANCE / The 2018 Phil-IRI manual states directly, under the mispronunciation scoring rule, that dialectal variation should not be counted as an error. Handling this is a Phil-IRI compliance requirement, not an optional enhancement. A system that flags dialectal variation as a mispronunciation does not implement the standard correctly.
+[/TABLE]
+
+6.2 Documented substitutions
+[TABLE]
+Target phoneme | Realised as | Example
+/f/ | /p/ | farmer → parmer
+/v/ | /b/ | victor → bictor
+/θ/ | /t/ | think → tink
+/ð/ | /d/ | that → dat
+/z/ | /s/ | zoo → soo
+/ʒ/ | /ʃ/ | measure → mesher
+[/TABLE]
+
+Additional reported features are encoded explicitly in Rev 2. Matched words are now diagnosed, so any feature missing from the table turns a correctly read word into a miscue:
+[TABLE]
+Feature | Encoding (low cost) | Example
+Tense / lax vowels | /ɪ/↔/i/, /ʊ/↔/u/ | ship → sheep, full → fool
+Low front vowel | /æ/→/a/ or /ɛ/ | cat → [kat]
+Reduced schwa | /ə/ realised as a full vowel in unstressed syllables | banana → [ba-na-na]
+Final cluster simplification | Deleting the last consonant of a word-final cluster | test → tes
+[/TABLE]
+
+6.3 Implementation
+A version-controlled data file, not inline constants. Pairs listed here receive near-zero substitution cost in the 5.6 distance computation; all other phoneme substitutions retain articulatory-feature-weighted cost.
+This replaces Soundex/Metaphone, which the current SDD specifies. Soundex discards vowels almost entirely — and vowel errors are among the most diagnostically significant miscues in Grade 4 readers. Neither Soundex nor Metaphone can express a targeted equivalence relation; a weighted phoneme distance can.
+6.4 Open decision
+Treating /θ/→/t/ as cost-free means a learner who genuinely cannot produce th is never flagged. For a reading-fluency tool this is likely correct; for a pronunciation tool it would not be. The team must decide deliberately and record the decision in the SDD. Rev 2 raises the stakes: because matched words are diagnosed, every pair left out of the table can make a correctly read word a miscue.
+6.5 Regional caveat
+Published Philippine English phonology is predominantly Tagalog-influenced. The pilot cohort is in Cebu City, a Cebuano-speaking area. The substitution set is broadly shared, but the team should verify against actual recordings rather than assume identity.
+7. Miscue Taxonomy
+Per the 2018 Phil-IRI manual, Table 5.
+[TABLE]
+# | Type | Detection in this architecture | Counted
+1 | Mispronunciation | Phonetic lane shows deviation outside the accent table — on any word, including words WhisperX matched (5.6) | Yes
+2 | Omission | Alignment delete with no speech in the gap; consecutive runs collapse | Yes
+3 | Substitution | Phonetic lane is closer to the WhisperX word than to the passage word | Yes
+4 | Insertion | Alignment insert or coverage candidate surviving the 5.7 post-pass | Yes
+5 | Repetition | Post-pass: two attempts, first correct — including attempts WhisperX dropped | Yes
+6 | Transposition | Post-pass swapped-pair pattern (5.7) | Yes
+7 | Reversal | Substitution relabelled by string check (5.7) | Yes
+— | Self-correction | Post-pass: two attempts, first incorrect | No
+[/TABLE]
+
+7.1 Required corrections to current behaviour
+Repetition is an error. The current decision tree marks it non-counting. The 2018 manual counts every repeated word or phrase as one error. This changes every score the system produces.
+Self-correction must be detected in order to be excluded. Without it, the system counts an error the manual explicitly does not. Note that enabling this makes average scores rise — that is the fix working, not a regression.
+Transposition and Reversal are absent from the current taxonomy.
+Refusal to Pronounce should be removed. It is not in the 2018 Table 5, and operationally it denotes the teacher supplying the word — ReadRight has no teacher. Fold into Omission and justify from the single-Learner design.
+7.2 Scope decisions on types 6 and 7
+Transposition — include. Omitting it causes a swapped pair to score as two errors where the manual specifies one. It overcounts, penalising the learner.
+Reversal — labelled in Rev 2. A reversal produces a real but incorrect word, which the detection stage labels SUBSTITUTION. A string check (5.7) now relabels it; the count and the Oral Reading Score are unchanged.
+The decision rule applied: a type is mandatory when omitting it changes the miscue count. Labelling accuracy alone is secondary, because the 2018 formula weights all types equally.
+
+
+8. Integration with readright-api
+8.1 New Protocols and wiring
+The service is Protocol-based with a single composition root. New components follow the existing pattern — one file per domain in app/models/, holding the model and its *Protocol.
+[TABLE]
+Component | Protocol | Lifecycle in dependencies.py
+Normaliser | NormaliserProtocol | Fresh per call (stateless)
+Aligner | AlignerProtocol | Fresh per call (stateless)
+Phoneme recogniser (Lane B) | PhonemeRecognizerProtocol | Singleton — model preloaded in lifespan
+Phonetic verifier (join + compare) | PhoneticVerifierProtocol | Fresh per call; consumes recogniser output
+Arbiter | ArbiterProtocol | Fresh per call (stateless)
+Passage preparer | PassagePreparerProtocol | Fresh; cache keyed by passage_id + content hash
+[/TABLE]
+
+GO2Pipeline is assembled in get_go2_pipeline() from these plus the existing transcriber, classifier, scorer, passage repository, reporter, and proper-noun extractor. No router or service imports a concrete class.
+The phoneme model must load once at startup, in the same lifespan block as WhisperX and MediaPipe. Per-request loading is not viable. Budget roughly 1.2 GB of memory for a 300M-parameter recogniser in 32-bit floats; check development machines and the VM.
+Concurrency. GO2Pipeline starts Lane B when audio.wav exists and joins the lanes after Stage 3. On a GPU the phonetic lane overlaps WhisperX; on a CPU both compete for cores, so measure wall-clock time in the spike (8.4).
+8.2 Required database change
+passages.proper_nouns is referenced by PassageRepository.fetch but does not exist; the method always returns [], so proper-noun handling relies solely on capitalisation extraction. This directly weakens FR-07d.
+Adding the column also gives the custom lexicon (5.1) a home. One migration unblocks both.
+8.3 Environment
+Each added model increases exposure to the existing Windows FFmpeg/torchcodec fragility. Containerise the AI service before the verifier is integrated, not during. Verify the chosen phoneme model installs and runs on the team’s development machines before committing it to a sprint plan. espeak-ng, used for expected phonemes, is a system dependency like ffmpeg and belongs in the container image.
+8.4 Validation spike
+Before planning the verifier sprint, run the candidate phoneme model over three existing full recordings and confirm that (a) the phonemes match what is audible, (b) the join by time assigns phonemes to the right words, and (c) speech WhisperX dropped appears as coverage candidates. Record wall-clock time and peak memory for WhisperX alone and for WhisperX + Lane B. A half-day spike establishes whether Rev 2 is buildable on the team's hardware.
+9. Configuration Parameters
+All are validated, not chosen. Each requires a test case and a recorded justification in the Software Test Document.
+[TABLE]
+Parameter | Purpose | Constraint
+GAP | Alignment gap cost | Fixed at 0.9
+MISMATCH | Alignment substitution cost | Graded 0–1; must satisfy mismatch < 2 × gap
+TIE_BREAK | Move chosen when costs are equal | Prefer pairing; fixed rule with a test
+PROPER_NOUN_RELAX | Relaxed cost for passage proper nouns | ~0.3; trades recall for precision
+T_FLAG | Distance below which a flagged word is cleared (Rev 1: PHONETIC_THRESHOLD) | Measure against known-answer recordings
+T_OVERRULE | Distance above which a WhisperX-matched word becomes a miscue | > T_FLAG; measure the false-overrule rate
+JOIN_PAD_MS | Margin around word windows when joining phonemes | 50–100 ms starting range; measure
+COVERAGE_MIN_MS | Shortest unaccounted speech that forms a coverage candidate | Measure
+DURATION_RATIO | Duration / expected duration that marks a hidden multi-attempt | Measure
+Accent weights | Cost for documented PE substitutions | Near-zero; see 6.4
+[/TABLE]
+
+Tuning method: set, run recordings with known correct labels, count errors in both directions, adjust. Do not select values in discussion. Measure matched and flagged words separately: hidden miscues recovered by T_OVERRULE, and correctly read words it wrongly overrules.
+
+
+10. Testing Requirements
+10.1 Per-stage tests
+Alignment — currently untested in isolation, which is why a failing aligner presented as a failing classifier. Hand-written expected traces:
+[TABLE]
+Passage | Hypothesis | Expected trace
+the cat sat | the cat sat | 3 × match
+the cat sat | the sat | match, delete, match
+the cat sat | the big cat sat | match, insert, match, match
+the cat sat | the bat sat | match, sub, match
+the cat sat | the cat cat sat | match, match, insert, match
+the boy saw the dog and the dog saw the boy | a boy see a dog an a dog see the boy | No delete; 11 positions in order (5 match, 6 sub) — Rev 2 regression case
+[/TABLE]
+
+Normalisation — one case per defect:
+[TABLE]
+ID | Passage | Hypothesis | Expected
+TC-07a-1 | don’t | do not | CORRECT, span 1
+TC-07a-2 | do not | don’t | CORRECT, span 2
+TC-07b-1 | the boy’s dog | the boys dog | all CORRECT
+TC-07c-1 | their house | there house | CORRECT
+TC-07d-1 | Maria ran | Mari a ran | CORRECT, no insertion
+[/TABLE]
+
+Phonetic lane — one case per accent substitution (must clear); one genuine mispronunciation that must survive (fink for think); and one case per hidden-miscue path: a mispronunciation WhisperX auto-corrected (match overruled), a repetition WhisperX dropped (coverage candidate), a word WhisperX produced but the learner skipped (omission restored), and a quiet word VAD dropped (omission cleared).
+Sequence post-pass — repetition, self-correction, multi-attempt run, phrase-level omission collapse.
+10.2 Invariant tests
+Σ passage_span across passage units == len(raw_tokens)
+Every passage index appears exactly once in the alignment trace
+Denominator equals raw token count, never normalised unit count
+Every hypothesis index appears exactly once in the alignment trace
+Every Lane B phoneme is assigned to exactly one unit or one coverage candidate
+10.3 Regression fixture
+[TABLE]
+THE MOST IMPORTANT TEST IN THIS DOCUMENT / Every rule added makes the system more permissive. It is possible to normalise and forgive so aggressively that no miscue is ever reported and every learner scores 100%. Maintain a fixture of recordings containing known real miscues of each type and assert they remain detected after every change.
+[/TABLE]
+
+Rev 2 adds a risk in the opposite direction: diagnosing matched words can create false positives. The fixture must also contain clean readings by accented speakers, asserted to stay CORRECT.
+10.4 Accented-speech test cases
+Without recordings from learners exhibiting the 6.2 features, the accent handling is unverified. These cases are required for the STD.
+10.5 Before/after comparison
+Run the previous and new pipelines over the same recordings and diff the labels. Hand-check a sample of changed labels, sorted into false positives correctly removed and real miscues wrongly erased. If the second set is not near-empty, a rule is too permissive.
+This diff is also the strongest available evidence for the defense.
+11. Open Recommendation — Confidence-Gated Abstention
+Not included in the team’s selection. Recorded here for an explicit decision.
+The pattern introduces a third outcome alongside Correct and Miscue: Uncertain. Words the system cannot classify confidently are excluded from the scored count rather than guessed at.
+The argument for inclusion:
+ReadRight has a single Learner role and no review step. A false positive reaches a nine-year-old with nothing in between. The original design had teacher review; that check was removed.
+Until the accent table is validated against real recordings, abstention is the only safeguard preventing systematic accent-driven false positives from reaching learners as reading failures.
+It falls out naturally from 5.6, which in Rev 2 produces distances for every word. Matched words whose distance lies near T_OVERRULE are precisely the uncertain cases.
+Reporting accuracy alongside coverage ("94% of positions classified, 96% agreement on those") is a stronger validation statement than a single figure computed over forced guesses.
+The argument against: an abstention rate that is too high produces a results summary full of gaps and a tool that feels broken. The acceptable rate is a GO4 presentation question.
+If rejected, record in the SDD assumptions that GO2 returns a binary verdict on every word including low-confidence cases, and that accent-driven false positives are unmitigated until Section 6 is validated.
+12. Deferred and Future Work
+[TABLE]
+Item | Status | Rationale
+Option 4 — reference-first with GOP | SDD future work | Eliminates the FR-07 class by construction. Deferred: full pipeline rewrite, and it changes how insertions are detected, reopening working code.
+Option 3 — parallel dual-lane | Partly adopted in Rev 2 | Rev 2 runs both recognisers over the whole recording but keeps WhisperX as the word authority and a single detection path. A fully independent second lane remains future work.
+Phonetic-only pipeline (no WhisperX) | Rejected for this sprint | No word boundaries, timings or substitution identity; the recogniser's own slips go uncorrected. Equivalent to Option 4 without its scoring model.
+Learned classifier | SDD future work | Requires an annotated corpus of Grade 4 Filipino learners reading English. Also carries experimental-framing risk.
+Reversal detection | Label added in Rev 2 | String check relabels substitutions (5.7); count and score unaffected.
+Option 5 — constrained decoding | Rejected | Silently under-reports miscues and inflates scores.
+[/TABLE]
+
+13. Documentation Impact
+[TABLE]
+Document | Update
+SRS | State English-only passage scope. Add a functional requirement for accent-tolerant phonetic comparison so Section 6 has a trace target. Correct FR-07 acceptance criteria.
+SDD | Replace the single-pass GO2 diagram with the two-lane diagram in Section 4. Add normaliser, aligner, phoneme recogniser, phonetic verifier, arbiter and post-pass components. Record the Rev 2 decision (1.1) and asymmetric thresholds. Replace the Soundex/Metaphone specification per 6.3. Promote the dialectal variation filter to a specified component. Correct the miscue taxonomy per Section 7.
+RTM | Trace paths for the new components and any new accent-tolerance requirement.
+STD | All cases in Section 10, including accented-speech cases, hidden-miscue paths and the regression fixture.
+Assumptions & Limitations | Abstention decision per Section 11; regional accent caveat per 6.5; phonetic-lane time and memory budget; behaviour when the phonetic lane is unavailable.
+[/TABLE]
+
+14. Implementation Sequence
+[TABLE]
+Phase | Work | Depends on
+0 | Replace SequenceMatcher with the NW aligner (trace output); verify insertion detection; add per-stage alignment tests | —
+0 | Transcriber output fixes (3.4): punctuation, missing timings | —
+0 | Taxonomy corrections (7.1); run collapsing, transposition, reversal label (5.7) | —
+0 | passages.proper_nouns migration | —
+1 | Normalisation layer + data files (5.3), including numbers, compounds and fillers | Phase 0
+1 | Custom lexicon for Filipino terms; expected phonemes in espeak IPA (5.1) | — (parallel)
+1 | Before/after measurement (10.5) | Phase 1
+2 | Containerise AI service, including espeak-ng | —
+2 | Phoneme model spike, including time and memory (8.4) | —
+2 | Lane B: whole-recording recognition, join by time, coverage candidates (5.6 steps 1–2) | Phase 1, spike
+2 | Comparison + accent table with vowel and cluster entries (5.6 step 3, 6) | Lane B
+2 | Arbiter with asymmetric thresholds; threshold validation (5.6 step 4, 9) | Comparison
+[/TABLE]
+
+Phase 0 is not optional and is not part of the architecture decision — it is defect repair. Nothing downstream is measurable until it is complete.

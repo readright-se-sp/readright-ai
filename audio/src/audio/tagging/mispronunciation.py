@@ -13,11 +13,15 @@ class MispronunciationTagger:
         self._labeler = labeler
 
     def tag(self, rows: list[AlignedWord], proper_nouns: frozenset[str]) -> list[AlignedWord]:
-        """Only single-word substitution rows change. An existing detail (miscorrection) is kept."""
+        """Only single-word substitution rows change. An existing detail (miscorrection) is kept.
+
+        Rows Lane B judged by sound (phonetic.check == "done") are left alone: its label stands.
+        """
         out: list[AlignedWord] = []
         for row in rows:
             expected, heard = row["passage_word"], row["spoken_word"]
-            if row["tag"] != "substitution" or expected is None or heard is None or " " in heard:
+            judged = row.get("phonetic", {}).get("check") == "done"
+            if judged or row["tag"] != "substitution" or expected is None or heard is None or " " in heard:
                 out.append(row)
                 continue
             label = self._labeler.label(expected, heard, proper_nouns)
